@@ -1,6 +1,7 @@
 # models/database.py
 import pyodbc
 from config.settings import DB_SERVER, DB_DATABASE, DB_USER, DB_PASSWORD
+from contextlib import contextmanager
 
 def conectar_bd():
     try:
@@ -23,3 +24,20 @@ def probar_conexion():
         conexion.close()
     else:
         print("No se pudo conectar")    
+
+@contextmanager
+def obtener_conexion():
+    """
+    Uso:
+        with obtener_conexion() as conn:
+            cursor = conn.cursor()
+            ...
+    Así garantizamos que la conexión siempre se cierre, incluso si hay error.
+    """
+    conn = conectar_bd()
+    if conn is None:
+        raise ConnectionError("No se pudo establecer conexión con la base de datos.")
+    try:
+        yield conn
+    finally:
+        conn.close()

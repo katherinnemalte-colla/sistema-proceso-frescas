@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sistema de Inventarios - Login")
+        self.setWindowTitle("MÓDULO DE PESAJE PRODUCTOS EN POSTAS Y A GRANEL DEL CENTRO DE PROCESO CARNES FRESCAS - Login")
         self.setFixedSize(300, 200)
 
         # Widgets
