@@ -5,6 +5,7 @@ En vez de repetir esta lógica en cada ventana, todas llaman a
 """
 
 from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
 
 
@@ -32,13 +33,16 @@ def aplicar_tamano(ventana: QWidget, modo: str = "centrado", ancho_pct: float = 
     Modo global para dimensionar cualquier ventana. Se llama UNA vez,
     típicamente en el __init__ de cada ventana, antes de mostrarla.
 
-    modo="completo"  -> ocupa toda la pantalla disponible (para la ventana de fondo).
+    modo="completo"  -> usa el estado "maximizado" nativo de Qt: se adapta
+                         automáticamente a cualquier pantalla/dispositivo,
+                         sin calcular píxeles a mano (para la ventana de fondo).
     modo="centrado"  -> toma un porcentaje de la pantalla y se centra
                          (para diálogos como el login).
     """
     if modo == "completo":
-        area = _pantalla_disponible()
-        ventana.setGeometry(area)
+        # Qt calcula el tamaño correcto según el monitor real al mostrarla;
+        # no hace falta pasarle ningún ancho/alto.
+        ventana.setWindowState(Qt.WindowMaximized)
 
     elif modo == "centrado":
         pantalla = _pantalla_disponible()
