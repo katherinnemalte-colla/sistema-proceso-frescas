@@ -20,6 +20,7 @@ from models.usuarios import Usuario
 from repositories.obtener_lote_fecha_repository import (
     ObtenerLoteFechaRepository
 )
+from ui.seleccion_de_producto import SeleccionDeProducto
 
 
 # ==============================================================
@@ -49,9 +50,9 @@ RUTA_ICONOS = os.path.join(
 # ==============================================================
 
 ESPECIES = [
-    ("res", "", "res.png"),
-    ("cerdo", "", "cerdo.png"),
-    ("ternera", "", "ternera.png"),
+    (1, "Res", "res.png"),
+    (2, "Cerdo", "cerdo.png"),
+    (3, "Ternera", "ternera.png"),
 ]
 
 # Ancho fijo del bloque central de contenido.
@@ -82,6 +83,7 @@ class VentanaPrincipal(QWidget):
         # ----------------------------------------------------------
 
         self.especie_seleccionada = None
+        self.ventana_seleccion_producto = None
 
         # ----------------------------------------------------------
         # CONFIGURACIÓN VENTANA
@@ -490,16 +492,60 @@ class VentanaPrincipal(QWidget):
         self.especie_seleccionada = boton.property(
             "id_especie"
         )
-
+        id_especie = boton.property(
+            "id_especie"
+        )
         nombre_especie = boton.property(
             "nombre_especie"
         )
 
-        # Al seleccionar una especie se actualiza
-        # inmediatamente el listado de lotes.
-        self._cargar_lotes(
-            nombre_especie=nombre_especie
+        # ----------------------------------------------------------
+        # FILTRAR POR FECHA + ESPECIE
+        # ----------------------------------------------------------
+
+        fecha = self.campo_fecha.date()
+        fecha_bd = fecha.toString("yyyy/MM/dd")
+        try:
+            lotes = self.repository.obtener_lotes_por_fecha_especie(
+                fecha_bd,
+                id_especie
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"No fue posible consultar los lotes.\n\n{e}"
+            )
+            return
+
+        # ----------------------------------------------------------
+        # SIN RESULTADOS PARA ESA ESPECIE
+        # ----------------------------------------------------------
+
+        if not lotes:
+            QMessageBox.information(
+                self,
+                "Sin resultados",
+                f"No se encontraron lotes para la especie \"{nombre_especie}\" "
+                f"en la fecha seleccionada."
+            )
+            return
+
+        # ----------------------------------------------------------
+        # SÍ HAY RESULTADOS: avanzar a Selección de producto
+        # ----------------------------------------------------------
+
+        self.ventana_seleccion_producto = SeleccionDeProducto(
+            usuario=self.usuario,
+            fecha_produccion=fecha.toString("yyyy-MM-dd"),
+            especie=nombre_especie,
+            numEspecie= id_especie,
+            lotes=lotes,
+            
         )
+        print("ID:", id_especie)
+        self.ventana_seleccion_producto.show()
+        self.close()
 
     # ==============================================================
     # FECHA CAMBIADA
