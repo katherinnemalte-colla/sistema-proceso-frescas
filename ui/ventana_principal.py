@@ -386,7 +386,7 @@ class VentanaPrincipal(QWidget):
 
             boton.setIconSize(
                 QSize(
-                    150,
+                    220,
                     150
                 )
             )

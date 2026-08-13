@@ -76,7 +76,7 @@ class ObtenerLoteFechaRepository:
             FROM ltes_prdccion a
             INNER JOIN espcies b
                 ON a.espcie = b.espcie
-            WHERE CONVERT(date, a.fcha_prdccion) = ?
+            WHERE a.fcha_prdccion = ?
               AND a.tpo_lte = 3
               AND a.estdo = 0
               AND a.estdo_pt = 0

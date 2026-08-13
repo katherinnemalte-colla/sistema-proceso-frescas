@@ -35,8 +35,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QGridLayout,
     QFrame,
+    QLineEdit
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QPixmap, QIcon
 
 from utils.ventana_utils import aplicar_tamano
@@ -143,7 +144,6 @@ class SeleccionDeProducto(QWidget):
         # ======================================================
         # DATOS
         # ======================================================
-
         fila_datos = QHBoxLayout()
         fila_datos.setSpacing(12)
 
@@ -336,13 +336,19 @@ class SeleccionDeProducto(QWidget):
             ) * PRODUCTOS_POR_PAGINA
             
             cursor.execute("""
-                SELECT
+            SELECT 
+                p.cdgo_plu, 
                 p.nmbre_crto AS nom_prog,
                 CAST(
                     CAST(i.con_arch AS VARCHAR(MAX))
                     AS VARBINARY(MAX)
-                ) AS con_arch
-            FROM imagenes i
+                ) AS con_arch,
+                CAST(i.con_arch_2 AS VARBINARY(MAX)) AS con_arch_2,
+                CAST(i.con_arch_3 AS VARBINARY(MAX)) AS con_arch_3,
+                CAST(i.con_arch_4 AS VARBINARY(MAX)) AS con_arch_4,
+                CAST(i.con_arch_5 AS VARBINARY(MAX)) AS con_arch_5,
+                CAST(i.con_arch_6 AS VARBINARY(MAX)) AS con_arch_6
+            FROM GESDOCUM_PRUEBAS.dbo.imagenes i
             INNER JOIN SIPPCPRUEBAS2.dbo.prdctos p
                 ON i.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
             WHERE i.nom_prog = 'productos'
@@ -359,14 +365,15 @@ class SeleccionDeProducto(QWidget):
             productos = []
 
             for fila in cursor.fetchall():
-
                 productos.append({
                     "nombre": fila.nom_prog,
-                    "imagen": (
-                        bytes(fila.con_arch)
-                        if fila.con_arch is not None
-                        else None
-                    )
+                    "cdgo_plu": fila.cdgo_plu,
+                    "imagen": bytes(fila.con_arch) if fila.con_arch is not None else None,
+                    "imagen_2": bytes(fila.con_arch_2) if fila.con_arch_2 is not None else None,
+                    "imagen_3": bytes(fila.con_arch_3) if fila.con_arch_3 is not None else None,
+                    "imagen_4": bytes(fila.con_arch_4) if fila.con_arch_4 is not None else None,
+                    "imagen_5": bytes(fila.con_arch_5) if fila.con_arch_5 is not None else None,
+                    "imagen_6": bytes(fila.con_arch_6) if fila.con_arch_6 is not None else None,
                 })
 
             return productos
@@ -437,7 +444,7 @@ class SeleccionDeProducto(QWidget):
 
             pixmap = QPixmap()
 
-            if pixmap.loadFromData(imagen, "JPG"):
+            if pixmap.loadFromData(imagen):
 
                 pixmap = pixmap.scaled(
                     175,
@@ -680,19 +687,13 @@ class SeleccionDeProducto(QWidget):
     # ==========================================================
 
     def _abrir_ficha_tecnica(self, producto):
-
         self.ventana_ficha_tecnica = FichaTecnica(
             usuario=self.usuario,
-            producto=producto["nombre"],
-            lote=(
-                self.lotes[0].lote
-                if self.lotes
-                else ""
-            ),
+            producto=producto,  # ahora es el diccionario completo, no solo el nombre
             fecha_produccion=self.fecha_produccion,
             especie=self.especie,
+            numEspecie=self.numEspecie,
+            lote=self.campo_lote.currentText() if hasattr(self, "campo_lote") else (self.lotes[0].lote if self.lotes else ""),
         )
-
         self.ventana_ficha_tecnica.show()
-
         self.close()
