@@ -12,13 +12,12 @@ class ObtenerLoteFechaRepository:
         query = """
             SELECT
                 a.nmro_lte AS LOTE,
-                a.fcha_prdccion AS FECHA_PRODUCCION,
-                a.espcie AS NUM_ESPECIE,
-                b.nmbre AS ESPECIE
+                a.fcha_prdccion AS FECHA_PRODUCCION
             FROM ltes_prdccion a
             INNER JOIN espcies b
                 ON a.espcie = b.espcie
-            WHERE CONVERT(date, a.fcha_prdccion) = ?
+            WHERE  a.fcha_prdccion = ?
+              AND a.cntro_prcso = 1
               AND a.tpo_lte = 3
               AND a.estdo = 0
               AND a.estdo_pt = 0
@@ -44,12 +43,6 @@ class ObtenerLoteFechaRepository:
                     lote=str(fila.LOTE),
                     fecha_produccion=str(
                         fila.FECHA_PRODUCCION
-                    ),
-                    numEspecie=str(
-                        fila.NUM_ESPECIE
-                    ),
-                    especie=str(
-                        fila.ESPECIE
                     )
                 )
 
@@ -61,7 +54,7 @@ class ObtenerLoteFechaRepository:
     # FECHA + ESPECIE
     # ==========================================================
 
-    def obtener_lotes_por_fecha_especie(
+    def obtener_lotes_por_especie(
         self,
         fecha,
         num_especie
@@ -77,6 +70,7 @@ class ObtenerLoteFechaRepository:
             INNER JOIN espcies b
                 ON a.espcie = b.espcie
             WHERE a.fcha_prdccion = ?
+              AND a.cntro_prcso = 1
               AND a.tpo_lte = 3
               AND a.estdo = 0
               AND a.estdo_pt = 0
