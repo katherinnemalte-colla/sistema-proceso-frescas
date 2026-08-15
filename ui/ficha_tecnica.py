@@ -235,9 +235,6 @@ class FichaTecnica(QWidget):
             ("Producto:", self.producto.get("nombre", "-")),
             ("PLU:", str(self.producto.get("cdgo_plu", "-"))),
             ("Especie:", self.especie),
-            ("Descripción:", "Corte de carne de alta calidad."),   # QUEMADO
-            ("Presentación:", "Pieza entera"),                     # QUEMADO
-            ("Conservación:", "0 - 4 °C"),                          # QUEMADO
         ]
 
         for etiqueta_texto, valor_texto in datos:
@@ -434,7 +431,7 @@ class FichaTecnica(QWidget):
 
         repository = ObtenerLoteFechaRepository()
         fecha_bd = self.fecha_produccion.replace("-", "/")
-        lotes = repository.obtener_lotes_por_fecha_especie(fecha_bd, self.numEspecie)
+        lotes = repository.obtener_lotes_por_especie(fecha_bd, self.numEspecie)
 
         self.seleccion_de_producto = SeleccionDeProducto(
             usuario=self.usuario,

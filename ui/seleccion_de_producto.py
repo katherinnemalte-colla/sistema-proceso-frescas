@@ -1,699 +1,741 @@
 """
-Ventana "Selección de producto".
-Se abre después de elegir la especie en VentanaPrincipal, solo cuando
-sí hay lotes disponibles para esa fecha + especie.
+seleccion_producto.py
 
-Muestra:
-- Número de lote, fecha de producción y especie (los datos ya elegidos).
-- Una matriz de 4x5 (20 botones) de productos; cada botón abre
-  su Ficha Técnica correspondiente (ficha_tecnica.py).
+Pantalla "SELECCIÓN DE PRODUCTO".
+
+Muestra los productos (con imagen) de la especie/lote actuales, navegables
+mediante un paginador alfabético (por la primera letra de p.nmbre_crto) y
+filtrables por N° PLU. Al elegir un producto se abre la Ficha Técnica.
+
+Capa: UI. No contiene SQL: todo el acceso a datos pasa por ImagenRepository.
 """
 
-from PySide6.QtWidgets import (
-    QWidget, QLabel, QPushButton,
-    QVBoxLayout, QHBoxLayout, QGridLayout
-)
-from PySide6.QtCore import Qt
+import os
 
-from utils.ventana_utils import aplicar_tamano
-from ui.ficha_tecnica import FichaTecnica
-
-FILAS_MATRIZ = 4
-COLUMNAS_MATRIZ = 5
-
-# Lista temporal de productos para llenar la matriz.
-# Reemplázala por la consulta real (repository) cuando esté lista.
-PRODUCTOS_DEMO = [f"Producto {n}" for n in range(1, FILAS_MATRIZ * COLUMNAS_MATRIZ + 1)]
-
-ANCHO_CONTENIDO = 760
-
+from PySide6.QtCore import Qt, Signal, QTimer, QByteArray
+from PySide6.QtGui import QPixmap, QColor
 from PySide6.QtWidgets import (
     QWidget,
-    QLabel,
-    QPushButton,
     QVBoxLayout,
     QHBoxLayout,
     QGridLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
     QFrame,
-    QLineEdit
+    QScrollArea,
+    QSizePolicy,
+    QGraphicsDropShadowEffect,
 )
-from PySide6.QtCore import Qt, QSize, QTimer
-from PySide6.QtGui import QPixmap, QIcon
 
 from utils.ventana_utils import aplicar_tamano
-from ui.ficha_tecnica import FichaTecnica
+from repositories.imagen_repository import ImagenRepository, TAMANO_PAGINA
+from ui.ficha_tecnica import FichaTecnica  # ajustar import según ubicación real
 
-from models.database import conectar_bd
+
+# Cuántos botones de letra se muestran a la vez en el paginador.
+BOTONES_LETRA_VISIBLES = 19
+
+# Columnas de la grilla de productos.
+COLUMNAS_GRILLA = 6
+
+# --- Paleta ---------------------------------------------------------------
+COLOR_PRIMARIO = "#1a6b6b"
+COLOR_PRIMARIO_OSCURO = "#134f4f"
+COLOR_PRIMARIO_CLARO = "#e6f2f2"
+COLOR_SELECCIONADO = "#1a6b6b"
+COLOR_BORDE = "#dfe6e6"
+COLOR_TEXTO_SECUNDARIO = "#8a97a0"
+COLOR_FONDO = "#eef3f3"
+
+# Carpeta donde viven los íconos (nombres simples: box.png, calendar.png,
+# cow.png, search.png). Ajusta esta ruta si tu proyecto la ubica distinto.
+RUTA_ICONOS = os.path.join("assets", "icons", "icons")
 
 
-FILAS_MATRIZ = 4
-COLUMNAS_MATRIZ = 5
+def _ruta_icono(nombre_archivo):
+    return os.path.join(RUTA_ICONOS, nombre_archivo)
 
-PRODUCTOS_POR_PAGINA = 20
 
-ANCHO_CONTENIDO = 1100
+def _icono_pixmap(nombre_archivo, tamano):
+    """Carga un ícono desde RUTA_ICONOS ya escalado; None si no existe."""
+    ruta = _ruta_icono(nombre_archivo)
+    if not os.path.isfile(ruta):
+        return None
+    pixmap = QPixmap(ruta)
+    if pixmap.isNull():
+        return None
+    return pixmap.scaled(tamano, tamano, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+
+def _aplicar_sombra(widget, blur=18, dx=0, dy=4, alfa=40):
+    """Sombra suave reutilizable para tarjetas."""
+    sombra = QGraphicsDropShadowEffect(widget)
+    sombra.setBlurRadius(blur)
+    sombra.setOffset(dx, dy)
+    sombra.setColor(QColor(0, 0, 0, alfa))
+    widget.setGraphicsEffect(sombra)
+
+
+class ImagenEscalable(QLabel):
+    """
+    QLabel que guarda el pixmap ORIGINAL (sin escalar) y lo vuelve a
+    escalar cada vez que el propio label cambia de tamaño. Así la
+    imagen se achica/agranda junto con la ventana, igual que el resto
+    de los widgets, en vez de quedarse fija en píxeles.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pixmap_original = None
+        self.setAlignment(Qt.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setMinimumHeight(60)
+
+    def set_pixmap_original(self, pixmap):
+        self._pixmap_original = pixmap
+        self._actualizar_pixmap_escalado()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._actualizar_pixmap_escalado()
+
+    def _actualizar_pixmap_escalado(self):
+        if self._pixmap_original is None:
+            return
+        margen = 16
+        ancho_disponible = max(1, self.width() - margen)
+        alto_disponible = max(1, self.height() - margen)
+        super().setPixmap(
+            self._pixmap_original.scaled(
+                ancho_disponible,
+                alto_disponible,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+
+class ProductoWidget(QFrame):
+    """Tarjeta clickeable de un producto: imagen + N° PLU + nombre."""
+
+    clicked = Signal(object)  # emite el Producto
+
+    def __init__(self, producto, parent=None):
+        super().__init__(parent)
+        self.producto = producto
+        self.setCursor(Qt.PointingHandCursor)
+        self.setObjectName("tarjetaProducto")
+        self.setStyleSheet(
+            f"""
+            #tarjetaProducto {{
+                background: white;
+                border: 1px solid {COLOR_BORDE};
+                border-radius: 14px;
+            }}
+            #tarjetaProducto:hover {{
+                border: 1px solid {COLOR_PRIMARIO};
+            }}
+            """
+        )
+        _aplicar_sombra(self, blur=16, dy=3, alfa=30)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # --- Imagen, con aire alrededor y esquinas redondeadas propias ---
+        contenedor_imagen = QFrame()
+        contenedor_imagen.setObjectName("contenedorImagen")
+        contenedor_imagen.setStyleSheet(
+            "#contenedorImagen { background: #f4f6f6; border-top-left-radius: 14px; "
+            "border-top-right-radius: 14px; }"
+        )
+        layout_imagen = QVBoxLayout(contenedor_imagen)
+        layout_imagen.setContentsMargins(10, 10, 10, 10)
+
+        etiqueta_imagen = ImagenEscalable()
+        etiqueta_imagen.setMinimumHeight(120)
+        etiqueta_imagen.setMaximumHeight(220)
+        etiqueta_imagen.setStyleSheet("background: transparent; border-radius: 8px;")
+
+        pixmap = self._cargar_pixmap(producto.imagen_principal)
+        if pixmap is not None:
+            etiqueta_imagen.set_pixmap_original(pixmap)
+        else:
+            etiqueta_imagen.setText("Sin imagen")
+            etiqueta_imagen.setStyleSheet(
+                "background: transparent; color: #aab3b3; border-radius: 8px;"
+            )
+
+        layout_imagen.addWidget(etiqueta_imagen)
+
+        # --- PLU + nombre, juntos, con una franja inferior de color ---
+        bloque_texto = QVBoxLayout()
+        bloque_texto.setContentsMargins(12, 10, 12, 12)
+        bloque_texto.setSpacing(2)
+
+        etiqueta_plu = QLabel(f"PLU {producto.cdgo_plu}")
+        etiqueta_plu.setAlignment(Qt.AlignCenter)
+        etiqueta_plu.setStyleSheet(
+            f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: 11px; letter-spacing: 0.5px;"
+        )
+
+        etiqueta_nombre = QLabel(producto.nom_prog.upper())
+        etiqueta_nombre.setAlignment(Qt.AlignCenter)
+        etiqueta_nombre.setWordWrap(True)
+        etiqueta_nombre.setStyleSheet(
+            f"color: {COLOR_PRIMARIO}; font-size: 14px; font-weight: 700;"
+        )
+
+        bloque_texto.addWidget(etiqueta_plu)
+        bloque_texto.addWidget(etiqueta_nombre)
+
+        # Franja delgada de acento, pegada abajo de la tarjeta.
+        franja_acento = QFrame()
+        franja_acento.setFixedHeight(4)
+        franja_acento.setStyleSheet(
+            f"background: {COLOR_PRIMARIO}; border-bottom-left-radius: 14px; "
+            "border-bottom-right-radius: 14px;"
+        )
+
+        layout.addWidget(contenedor_imagen)
+        layout.addLayout(bloque_texto)
+        layout.addWidget(franja_acento)
+
+    @staticmethod
+    def _cargar_pixmap(datos_binarios):
+        if not datos_binarios:
+            return None
+        pixmap = QPixmap()
+        if pixmap.loadFromData(QByteArray(datos_binarios)):
+            return pixmap
+        return None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.producto)
+        super().mousePressEvent(event)
 
 
 class SeleccionDeProducto(QWidget):
+    """
+    Pantalla de selección de producto para un lote/fecha/especie dados.
+    """
 
-    def __init__(
-        self,
-        usuario,
-        fecha_produccion: str,
-        especie: str,
-        numEspecie,
-        lotes: list
-    ):
-        super().__init__()
-
+    def __init__(self, usuario, lotes, fecha_produccion, especie, numEspecie, parent=None):
+        super().__init__(parent)
         self.usuario = usuario
+
         self.fecha_produccion = fecha_produccion
         self.especie = especie
-        self.numEspecie = int(numEspecie)
+        self.numEspecie = numEspecie
+
+        self.repositorio = ImagenRepository(self._obtener_conexion)
+
+        # Estado del paginador alfabético
+        self._paginas_letras = []      # list[PaginaLetra]
+        self._indice_pagina_actual = 0
+        self._indice_ventana = 0
         self.lotes = lotes
+        self._ventana_ficha_tecnica = None
 
-        self.ventana_ficha_tecnica = None
+        self._construir_ui()
+        self._cargar_paginador_alfabetico()
+        aplicar_tamano(self, modo="completo", ancho_pct=0.7, alto_pct=0.85)
 
-        # Paginación
-        self.pagina_actual = 1
-        self.total_productos = 0
-        self.total_paginas = 0
+    # ------------------------------------------------------------------
+    # Conexión a BD — ajustar según el módulo real del proyecto
+    # ------------------------------------------------------------------
+    def _obtener_conexion(self):
+        from models.database import obtener_conexion  # import local para evitar ciclos
+        return obtener_conexion()
 
-        self.setWindowTitle("Selección de producto")
+    # ------------------------------------------------------------------
+    # Construcción de la UI
+    # ------------------------------------------------------------------
+    def _construir_ui(self):
+        self.setStyleSheet(f"background: {COLOR_FONDO};")
+        layout_principal = QVBoxLayout(self)
+        layout_principal.setContentsMargins(0, 0, 0, 0)
+        layout_principal.setSpacing(0)
 
-        aplicar_tamano(self, modo="completo")
+        layout_principal.addWidget(self._crear_cabecera())
+        layout_principal.addWidget(self._crear_tarjetas_info())
+        layout_principal.addWidget(self._crear_filtro())
+        layout_principal.addWidget(self._crear_titulo_seccion())
 
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #F5F8F8;
-            }
-        """)
+        # Área con scroll para la grilla de productos
+        self._area_scroll = QScrollArea()
+        self._area_scroll.setWidgetResizable(True)
+        self._area_scroll.setStyleSheet("border: none; background: transparent;")
 
-        self._crear_interfaz()
+        self._contenedor_grilla = QWidget()
+        self._contenedor_grilla.setStyleSheet("background: transparent;")
+        self._layout_grilla = QGridLayout(self._contenedor_grilla)
+        self._layout_grilla.setContentsMargins(28, 16, 28, 16)
+        self._layout_grilla.setSpacing(20)
+        self._area_scroll.setWidget(self._contenedor_grilla)
 
-        self._cargar_total_productos()
+        layout_principal.addWidget(self._area_scroll, stretch=1)
 
-        self._cargar_pagina()
+        layout_principal.addWidget(self._crear_paginador_alfabetico())
+        layout_principal.addWidget(self._crear_boton_atras())
 
-    # ==========================================================
-    # INTERFAZ
-    # ==========================================================
+    # ------------------------------------------------------------------
+    # Cabecera degradada, con adorno tipo "— • TÍTULO • —"
+    # ------------------------------------------------------------------
+    def _crear_cabecera(self):
+        cabecera = QFrame()
+        cabecera.setFixedHeight(64)
+        cabecera.setStyleSheet(
+            f"""
+            QFrame {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0.4,
+                    stop:0 {COLOR_PRIMARIO_OSCURO},
+                    stop:0.5 {COLOR_PRIMARIO},
+                    stop:1 #1f7a7a
+                );
+            }}
+            """
+        )
 
-    def _crear_interfaz(self):
-
-        fila_central = QHBoxLayout()
-        fila_central.addStretch()
-
-        layout = QVBoxLayout()
-        layout.setContentsMargins(25, 20, 25, 20)
-        layout.setSpacing(12)
-
-        contenedor = QWidget()
-        contenedor.setFixedWidth(ANCHO_CONTENIDO)
-        contenedor.setLayout(layout)
-
-        fila_central.addWidget(contenedor)
-        fila_central.addStretch()
-        
-        layout_externo = QVBoxLayout()
-        layout_externo.setContentsMargins(0, 0, 0, 0)
-        layout_externo.addStretch()
-        layout_externo.addLayout(fila_central)
-        layout_externo.addStretch()
-
-        # ======================================================
-        # TÍTULO
-        # ======================================================
+        layout = QHBoxLayout(cabecera)
+        layout.setContentsMargins(24, 0, 24, 0)
+        layout.setSpacing(10)
 
         titulo = QLabel("SELECCIÓN DE PRODUCTO")
-        titulo.setAlignment(Qt.AlignCenter)
+        titulo.setStyleSheet(
+            "color: white; font-size: 20px; font-weight: 700; letter-spacing: 1px;"
+        )
 
-        titulo.setStyleSheet("""
-            QLabel {
-                background-color: #115E67;
-                color: white;
-                font-size: 26px;
-                font-weight: bold;
-                padding: 14px;
-                border-radius: 10px;
-            }
-        """)
-
+        layout.addStretch(1)
         layout.addWidget(titulo)
+        layout.addStretch(1)
 
-        # ======================================================
-        # DATOS
-        # ======================================================
-        fila_datos = QHBoxLayout()
-        fila_datos.setSpacing(12)
+        return cabecera
 
-        lote = self.lotes[0].lote if self.lotes else "Sin lote"
+    # ------------------------------------------------------------------
+    # Tarjetas de información (LOTE / FECHA / ESPECIE)
+    # ------------------------------------------------------------------
+    def _crear_tarjetas_info(self):
+        contenedor = QWidget()
+        contenedor.setStyleSheet("background: transparent;")
+        layout = QHBoxLayout(contenedor)
+        layout.setContentsMargins(24, 16, 24, 8)
+        layout.setSpacing(16)
 
-        fila_datos.addWidget(
-            self._crear_dato(
-                "LOTE",
-                lote
+        layout.addWidget(
+            self._crear_tarjeta("LOTE", self._obtener_valor_lote(), "box.png")
+        )
+        layout.addWidget(
+            self._crear_tarjeta("FECHA DE PRODUCCIÓN", str(self.fecha_produccion), "calendar.png")
+        )
+        layout.addWidget(
+            self._crear_tarjeta("ESPECIE", str(self.especie), "cow.png")
+        )
+        return contenedor
+
+    def _obtener_valor_lote(self):
+        """
+        Devuelve el valor del lote como texto simple, sin importar si
+        self.lotes llega como una lista de objetos (con atributo .lote),
+        una lista de diccionarios (con clave "lote"), una lista de
+        strings, o directamente un valor único.
+        """
+        valor = self.lotes
+
+        if isinstance(valor, (list, tuple)):
+            if not valor:
+                return ""
+            valor = valor[0]
+
+        if hasattr(valor, "lote"):
+            return str(valor.lote)
+        if isinstance(valor, dict):
+            return str(valor.get("lote", ""))
+        return str(valor)
+
+    @staticmethod
+    def _crear_tarjeta(etiqueta, valor, nombre_icono):
+        tarjeta = QFrame()
+        tarjeta.setStyleSheet(
+            f"background: white; border: 1px solid {COLOR_BORDE}; border-radius: 12px;"
+        )
+        _aplicar_sombra(tarjeta, blur=14, dy=2, alfa=18)
+
+        layout = QHBoxLayout(tarjeta)
+        layout.setContentsMargins(14, 10, 18, 10)
+        layout.setSpacing(12)
+
+        circulo_icono = QLabel()
+        circulo_icono.setFixedSize(48, 48)
+        circulo_icono.setAlignment(Qt.AlignCenter)
+        circulo_icono.setStyleSheet(
+            f"background: {COLOR_PRIMARIO_CLARO}; border-radius: 24px;"
+        )
+        icono = _icono_pixmap(nombre_icono, 26)
+        if icono is not None:
+            circulo_icono.setPixmap(icono)
+            # Fondo del color primario para que el ícono blanco resalte.
+            circulo_icono.setStyleSheet(
+                f"background: {COLOR_PRIMARIO}; border-radius: 24px;"
             )
+
+        bloque_texto = QVBoxLayout()
+        bloque_texto.setSpacing(2)
+
+        etq_titulo = QLabel(etiqueta)
+        etq_titulo.setStyleSheet(
+            f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: 10px; letter-spacing: 1px; "
+            "font-weight: 600;"
         )
 
-        fila_datos.addWidget(
-            self._crear_dato(
-                "FECHA DE PRODUCCIÓN",
-                self.fecha_produccion
-            )
+        etq_valor = QLabel(valor)
+        etq_valor.setStyleSheet(
+            f"color: {COLOR_PRIMARIO}; font-size: 17px; font-weight: 700;"
         )
 
-        fila_datos.addWidget(
-            self._crear_dato(
-                "ESPECIE",
-                self.especie
-            )
-        )
+        bloque_texto.addWidget(etq_titulo)
+        bloque_texto.addWidget(etq_valor)
 
-        layout.addLayout(fila_datos)
+        layout.addWidget(circulo_icono)
+        layout.addLayout(bloque_texto)
+        layout.addStretch(1)
+        return tarjeta
 
-        # ======================================================
-        # TÍTULO PRODUCTOS
-        # ======================================================
-
-        titulo_productos = QLabel("SELECCIONE UN PRODUCTO")
-
-        titulo_productos.setAlignment(Qt.AlignCenter)
-
-        titulo_productos.setStyleSheet("""
-            QLabel {
-                color: #115E67;
-                font-size: 21px;
-                font-weight: bold;
-                padding: 5px;
-            }
-        """)
-
-        layout.addWidget(titulo_productos)
-
-        # ======================================================
-        # MATRIZ 4 X 5
-        # ======================================================
-
-        self.matriz_productos = QGridLayout()
-        self.matriz_productos.setSpacing(10)
-
-        layout.addLayout(self.matriz_productos)
-
-        # ======================================================
-        # PAGINACIÓN
-        # ======================================================
-
-        self.layout_paginacion = QHBoxLayout()
-        self.layout_paginacion.setSpacing(5)
-
-        layout.addLayout(self.layout_paginacion)
-
-        # ======================================================
-        # ATRÁS
-        # ======================================================
-
-        # --- dentro de tu método que arma la interfaz (ej. _crear_interfaz) ---
-        boton_atras = QPushButton("←  ATRÁS")
-        boton_atras.setFixedHeight(45)
-        boton_atras.setStyleSheet("""
-            QPushButton {
-                background-color: #115E67;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 15px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0D4D55;
-            }
-        """)
-        boton_atras.clicked.connect(self._volver_a_principal)
-        layout.addWidget(boton_atras)
-        self.setLayout(layout_externo)
-
-    # --- método SEPARADO, al mismo nivel que __init__, NO adentro de él ---
-    def _volver_a_principal(self):
-        from ui.ventana_principal import VentanaPrincipal
-        self.ventana_principal = VentanaPrincipal(self.usuario)
-        self.ventana_principal.show()
-        self.close()
-
-    # ==========================================================
-    # DATOS SUPERIORES
-    # ==========================================================
-
-    def _crear_dato(self, titulo, valor):
-
+    # ------------------------------------------------------------------
+    # Filtro por PLU
+    # ------------------------------------------------------------------
+    def _crear_filtro(self):
         contenedor = QFrame()
+        contenedor.setStyleSheet(
+            f"background: white; border: 1px solid {COLOR_BORDE}; border-radius: 12px;"
+        )
+        _aplicar_sombra(contenedor, blur=14, dy=2, alfa=15)
 
-        contenedor.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #D9E2E4;
-                border-radius: 10px;
-            }
-        """)
+        layout = QHBoxLayout(contenedor)
+        layout.setContentsMargins(10, 8, 16, 8)
+        layout.setSpacing(12)
 
-        layout = QVBoxLayout(contenedor)
+        circulo_buscar = QLabel()
+        circulo_buscar.setFixedSize(36, 36)
+        circulo_buscar.setAlignment(Qt.AlignCenter)
+        circulo_buscar.setStyleSheet(
+            f"background: {COLOR_PRIMARIO}; border-radius: 18px;"
+        )
+        icono_buscar = _icono_pixmap("search.png", 18)
+        if icono_buscar is not None:
+            circulo_buscar.setPixmap(icono_buscar)
 
-        etiqueta_titulo = QLabel(titulo)
-        etiqueta_titulo.setAlignment(Qt.AlignCenter)
+        etiqueta = QLabel("Filtro por N° PLU")
+        etiqueta.setStyleSheet(f"color: {COLOR_PRIMARIO}; font-weight: 700; font-size: 13px;")
 
-        etiqueta_titulo.setStyleSheet("""
-            QLabel {
-                color: #555;
-                font-size: 11px;
+        self.campo_filtro_plu = QLineEdit()
+        self.campo_filtro_plu.setStyleSheet(
+            f"""
+            QLineEdit {{
                 border: none;
-            }
-        """)
+                border-left: 1px solid {COLOR_BORDE};
+                border-radius: 0px;
+                padding: 6px 12px;
+                font-size: 13px;
+            }}
+            """
+        )
 
-        etiqueta_valor = QLabel(str(valor))
-        etiqueta_valor.setAlignment(Qt.AlignCenter)
+        self._temporizador_filtro = QTimer(self)
+        self._temporizador_filtro.setSingleShot(True)
+        self._temporizador_filtro.setInterval(350)
+        self._temporizador_filtro.timeout.connect(self._aplicar_filtro_plu)
+        self.campo_filtro_plu.textChanged.connect(lambda _texto: self._temporizador_filtro.start())
 
-        etiqueta_valor.setStyleSheet("""
-            QLabel {
-                color: #115E67;
-                font-size: 16px;
-                font-weight: bold;
-                border: none;
-            }
-        """)
+        layout.addWidget(circulo_buscar)
+        layout.addWidget(etiqueta)
+        layout.addWidget(self.campo_filtro_plu, stretch=1)
 
-        layout.addWidget(etiqueta_titulo)
-        layout.addWidget(etiqueta_valor)
+        envoltorio = QWidget()
+        envoltorio.setStyleSheet("background: transparent;")
+        layout_envoltorio = QVBoxLayout(envoltorio)
+        layout_envoltorio.setContentsMargins(24, 8, 24, 8)
+        layout_envoltorio.addWidget(contenedor)
+        return envoltorio
+
+    # ------------------------------------------------------------------
+    # Título de sección con el mismo adorno de la cabecera
+    # ------------------------------------------------------------------
+    def _crear_titulo_seccion(self):
+        contenedor = QWidget()
+        contenedor.setStyleSheet("background: transparent;")
+        layout = QHBoxLayout(contenedor)
+        layout.setContentsMargins(24, 16, 24, 8)
+        layout.setSpacing(10)
+
+        titulo = QLabel("SELECCIONE UN PRODUCTO")
+        titulo.setStyleSheet(
+            f"color: {COLOR_PRIMARIO}; font-size: 16px; font-weight: 700; letter-spacing: 1px;"
+        )
+
+        layout.addStretch(1)
+        layout.addWidget(titulo)
+        layout.addStretch(1)
 
         return contenedor
 
-    # ==========================================================
-    # CONSULTA TOTAL
-    # ==========================================================
+    # ------------------------------------------------------------------
+    # Paginador alfabético
+    # ------------------------------------------------------------------
+    def _crear_paginador_alfabetico(self):
+        contenedor = QWidget()
+        contenedor.setStyleSheet("background: transparent;")
+        self._layout_paginador = QHBoxLayout(contenedor)
+        self._layout_paginador.setContentsMargins(24, 8, 24, 16)
+        self._layout_paginador.setSpacing(6)
 
-    def _cargar_total_productos(self):
+        self.boton_primero = QPushButton("«")
+        self.boton_anterior = QPushButton("‹")
+        self.boton_siguiente = QPushButton("›")
+        self.boton_ultimo = QPushButton("»")
 
-        conexion = conectar_bd(
-            database_key="DB_DATABASE_1"
-        )
+        for boton in (self.boton_primero, self.boton_anterior, self.boton_siguiente, self.boton_ultimo):
+            boton.setFixedSize(34, 34)
+            boton.setStyleSheet(self._estilo_boton_navegacion())
 
-        try:
+        self.boton_primero.clicked.connect(self._ir_al_inicio)
+        self.boton_anterior.clicked.connect(self._desplazar_izquierda)
+        self.boton_siguiente.clicked.connect(self._desplazar_derecha)
+        self.boton_ultimo.clicked.connect(self._ir_al_final)
 
-            cursor = conexion.cursor()
+        self._layout_paginador.addWidget(self.boton_primero)
+        self._layout_paginador.addWidget(self.boton_anterior)
 
-            cursor.execute("""
-                SELECT COUNT(*)
-                FROM imagenes
-                WHERE nom_prog <> 'productos'
-            """)
+        self._layout_letras = QHBoxLayout()
+        self._layout_letras.setSpacing(6)
+        self._layout_paginador.addLayout(self._layout_letras)
+        self._layout_paginador.addStretch(1)
 
-            self.total_productos = cursor.fetchone()[0]
+        self._layout_paginador.addWidget(self.boton_siguiente)
+        self._layout_paginador.addWidget(self.boton_ultimo)
 
-            self.total_paginas = (
-                self.total_productos
-                + PRODUCTOS_POR_PAGINA
-                - 1
-            ) // PRODUCTOS_POR_PAGINA
+        return contenedor
 
-        finally:
-            conexion.close()
-
-    # ==========================================================
-    # OBTENER PRODUCTOS DE LA PÁGINA
-    # ==========================================================
-
-    def _obtener_productos(self):
-
-        conexion = conectar_bd(
-            database_key="DB_DATABASE_1"
-        )
-
-        try:
-
-            cursor = conexion.cursor()
-
-            offset = (
-                self.pagina_actual - 1
-            ) * PRODUCTOS_POR_PAGINA
-            
-            cursor.execute("""
-            SELECT 
-                p.cdgo_plu, 
-                p.nmbre_crto AS nom_prog,
-                CAST(
-                    CAST(i.con_arch AS VARCHAR(MAX))
-                    AS VARBINARY(MAX)
-                ) AS con_arch,
-                CAST(i.con_arch_2 AS VARBINARY(MAX)) AS con_arch_2,
-                CAST(i.con_arch_3 AS VARBINARY(MAX)) AS con_arch_3,
-                CAST(i.con_arch_4 AS VARBINARY(MAX)) AS con_arch_4,
-                CAST(i.con_arch_5 AS VARBINARY(MAX)) AS con_arch_5,
-                CAST(i.con_arch_6 AS VARBINARY(MAX)) AS con_arch_6
-            FROM GESDOCUM_PRUEBAS.dbo.imagenes i
-            INNER JOIN SIPPCPRUEBAS2.dbo.prdctos p
-                ON i.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
-            WHERE i.nom_prog = 'productos'
-              AND p.cdgo_espcie = ?
-            ORDER BY p.nmbre_crto
-            OFFSET ? ROWS
-            FETCH NEXT ? ROWS ONLY
-            """,
-                int(self.numEspecie),
-                offset,
-                PRODUCTOS_POR_PAGINA
-            )
-
-            productos = []
-
-            for fila in cursor.fetchall():
-                productos.append({
-                    "nombre": fila.nom_prog,
-                    "cdgo_plu": fila.cdgo_plu,
-                    "imagen": bytes(fila.con_arch) if fila.con_arch is not None else None,
-                    "imagen_2": bytes(fila.con_arch_2) if fila.con_arch_2 is not None else None,
-                    "imagen_3": bytes(fila.con_arch_3) if fila.con_arch_3 is not None else None,
-                    "imagen_4": bytes(fila.con_arch_4) if fila.con_arch_4 is not None else None,
-                    "imagen_5": bytes(fila.con_arch_5) if fila.con_arch_5 is not None else None,
-                    "imagen_6": bytes(fila.con_arch_6) if fila.con_arch_6 is not None else None,
-                })
-
-            return productos
-
-        finally:
-            conexion.close()
-
-    # ==========================================================
-    # CARGAR PÁGINA
-    # ==========================================================
-
-    def _cargar_pagina(self):
-
-        self._limpiar_matriz()
-
-        productos = self._obtener_productos()
-
-        for indice, producto in enumerate(productos):
-
-            fila = indice // COLUMNAS_MATRIZ
-            columna = indice % COLUMNAS_MATRIZ
-
-            boton = self._crear_boton_producto(
-                producto
-            )
-
-            self.matriz_productos.addWidget(
-                boton,
-                fila,
-                columna
-            )
-
-        self._actualizar_paginacion()
-
-    # ==========================================================
-    # BOTÓN PRODUCTO
-    # ==========================================================
-
-    def _crear_boton_producto(self, producto):
-
-        boton = QPushButton()
-
-        boton.setFixedSize(195, 140)
-
-        boton.setStyleSheet("""
-            QPushButton {
-                background-color: white;
-                border: 2px solid #D9E2E4;
-                border-radius: 12px;
-                color: #115E67;
+    def _crear_boton_atras(self):
+        boton_atras = QPushButton("←  ATRÁS")
+        boton_atras.setFixedHeight(50)
+        boton_atras.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: {COLOR_PRIMARIO};
+                color: white;
                 font-size: 14px;
-                font-weight: bold;
-            }
-
-            QPushButton:hover {
-                border: 3px solid #94B7BB;
-                background-color: #F7FAFA;
-            }
-
-            QPushButton:pressed {
-                background-color: #DDEEEF;
-            }
-        """)
-
-        imagen = producto["imagen"]
-
-        if imagen:
-
-            pixmap = QPixmap()
-
-            if pixmap.loadFromData(imagen):
-
-                pixmap = pixmap.scaled(
-                    175,
-                    95,
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                )
-
-                boton.setIcon(QIcon(pixmap))
-                boton.setIconSize(
-                    QSize(175, 95)
-                )
-
-        # NOMBRE REAL DESDE nom_prog
-        boton.setText(
-            producto["nombre"]
+                font-weight: 700;
+                border: none;
+                letter-spacing: 1px;
+            }}
+            QPushButton:hover {{
+                background: {COLOR_PRIMARIO_OSCURO};
+            }}
+            """
         )
+        boton_atras.setCursor(Qt.PointingHandCursor)
+        boton_atras.clicked.connect(self._volver_a_principal)
+        return boton_atras
 
-        
-
-        boton.clicked.connect(
-            lambda checked=False,
-                   producto=producto:
-            self._abrir_ficha_tecnica(producto)
-        )
-
-        return boton
-
-    # ==========================================================
-    # PAGINACIÓN
-    # ==========================================================
-
-    def _actualizar_paginacion(self):
-
-        self._limpiar_paginacion()
-
-        inicio = (
-            (self.pagina_actual - 1)
-            * PRODUCTOS_POR_PAGINA
-        ) + 1
-
-        fin = min(
-            self.pagina_actual
-            * PRODUCTOS_POR_PAGINA,
-            self.total_productos
-        )
-
-        informacion = QLabel(
-            f"Mostrando {inicio} - {fin} "
-            f"de {self.total_productos} productos"
-        )
-
-        informacion.setStyleSheet("""
-            QLabel {
-                background-color: white;
-                color: #115E67;
-                padding: 10px 15px;
-                border: 1px solid #D9E2E4;
+    @staticmethod
+    def _estilo_boton_navegacion():
+        return f"""
+            QPushButton {{
+                border: 1px solid {COLOR_BORDE};
                 border-radius: 8px;
-                font-weight: bold;
-            }
-        """)
+                background: white;
+                color: {COLOR_PRIMARIO};
+                font-weight: 700;
+            }}
+            QPushButton:disabled {{
+                color: #c7cfcf;
+                border-color: #eef2f2;
+            }}
+            QPushButton:hover:!disabled {{
+                background: {COLOR_PRIMARIO_CLARO};
+            }}
+        """
 
-        self.layout_paginacion.addWidget(
-            informacion
-        )
+    # ------------------------------------------------------------------
+    # Paginador alfabético — carga y navegación
+    # ------------------------------------------------------------------
+    def _cargar_paginador_alfabetico(self):
+        self._paginas_letras = self.repositorio.construir_paginas_letras(self.numEspecie)
+        self._indice_pagina_actual = 0
+        self._indice_ventana = 0
 
-        self.layout_paginacion.addStretch()
+        if self._paginas_letras:
+            self._renderizar_botones_letras()
+            self._cargar_productos_de_pagina_actual()
+        else:
+            self._mostrar_mensaje_vacio()
 
-        # PRIMERA
-        boton = self._boton_pagina("«")
+    def _renderizar_botones_letras(self):
+        while self._layout_letras.count():
+            item = self._layout_letras.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
-        boton.clicked.connect(
-            lambda: self._ir_a_pagina(1)
-        )
+        inicio = self._indice_ventana
+        fin = min(inicio + BOTONES_LETRA_VISIBLES, len(self._paginas_letras))
 
-        self.layout_paginacion.addWidget(boton)
+        for indice in range(inicio, fin):
+            pagina_letra = self._paginas_letras[indice]
+            boton = QPushButton(pagina_letra.letra)
+            boton.setFixedSize(34, 34)
+            es_seleccionado = indice == self._indice_pagina_actual
+            boton.setStyleSheet(self._estilo_boton_letra(es_seleccionado))
+            boton.clicked.connect(lambda _=False, i=indice: self._ir_a_pagina(i))
+            self._layout_letras.addWidget(boton)
 
-        # ANTERIOR
-        boton = self._boton_pagina("‹")
+        self.boton_primero.setEnabled(self._indice_ventana > 0)
+        self.boton_anterior.setEnabled(self._indice_ventana > 0)
+        self.boton_siguiente.setEnabled(fin < len(self._paginas_letras))
+        self.boton_ultimo.setEnabled(fin < len(self._paginas_letras))
 
-        boton.clicked.connect(
-            lambda: self._ir_a_pagina(
-                self.pagina_actual - 1
-            )
-        )
-
-        boton.setEnabled(
-            self.pagina_actual > 1
-        )
-
-        self.layout_paginacion.addWidget(boton)
-
-        # NÚMEROS
-        paginas = range(
-            1,
-            self.total_paginas + 1
-        )
-
-        for pagina in paginas:
-
-            boton = self._boton_pagina(
-                str(pagina),
-                activo=(
-                    pagina == self.pagina_actual
-                )
-            )
-
-            boton.clicked.connect(
-                lambda checked=False,
-                       p=pagina:
-                self._ir_a_pagina(p)
-            )
-
-            self.layout_paginacion.addWidget(
-                boton
-            )
-
-        # SIGUIENTE
-        boton = self._boton_pagina("›")
-
-        boton.clicked.connect(
-            lambda: self._ir_a_pagina(
-                self.pagina_actual + 1
-            )
-        )
-
-        boton.setEnabled(
-            self.pagina_actual
-            < self.total_paginas
-        )
-
-        self.layout_paginacion.addWidget(boton)
-
-        # ÚLTIMA
-        boton = self._boton_pagina("»")
-
-        boton.clicked.connect(
-            lambda: self._ir_a_pagina(
-                self.total_paginas
-            )
-        )
-
-        self.layout_paginacion.addWidget(boton)
-
-    # ==========================================================
-    # BOTÓN PAGINACIÓN
-    # ==========================================================
-
-    def _boton_pagina(
-        self,
-        texto,
-        activo=False
-    ):
-
-        boton = QPushButton(texto)
-
-        boton.setFixedSize(42, 42)
-
-        if activo:
-
-            boton.setStyleSheet("""
-                QPushButton {
-                    background-color: #115E67;
+    @staticmethod
+    def _estilo_boton_letra(seleccionado):
+        if seleccionado:
+            return f"""
+                QPushButton {{
+                    background: {COLOR_SELECCIONADO};
                     color: white;
                     border: none;
                     border-radius: 8px;
-                    font-size: 15px;
-                    font-weight: bold;
-                }
-            """)
+                    font-weight: 700;
+                }}
+            """
+        return f"""
+            QPushButton {{
+                background: white;
+                color: {COLOR_PRIMARIO};
+                border: 1px solid {COLOR_BORDE};
+                border-radius: 8px;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{
+                background: {COLOR_PRIMARIO_CLARO};
+            }}
+        """
 
-        else:
+    def _ir_a_pagina(self, indice):
+        self._indice_pagina_actual = indice
+        if indice < self._indice_ventana:
+            self._indice_ventana = indice
+        elif indice >= self._indice_ventana + BOTONES_LETRA_VISIBLES:
+            self._indice_ventana = indice - BOTONES_LETRA_VISIBLES + 1
+        self._renderizar_botones_letras()
+        self._cargar_productos_de_pagina_actual()
 
-            boton.setStyleSheet("""
-                QPushButton {
-                    background-color: white;
-                    color: #115E67;
-                    border: 1px solid #D9E2E4;
-                    border-radius: 8px;
-                    font-size: 15px;
-                    font-weight: bold;
-                }
+    def _desplazar_izquierda(self):
+        self._indice_ventana = max(0, self._indice_ventana - 1)
+        self._renderizar_botones_letras()
 
-                QPushButton:hover {
-                    background-color: #DDEEEF;
-                }
-            """)
+    def _desplazar_derecha(self):
+        maximo = max(0, len(self._paginas_letras) - BOTONES_LETRA_VISIBLES)
+        self._indice_ventana = min(maximo, self._indice_ventana + 1)
+        self._renderizar_botones_letras()
 
-        return boton
+    def _ir_al_inicio(self):
+        self._indice_ventana = 0
+        self._renderizar_botones_letras()
 
-    # ==========================================================
-    # CAMBIAR PÁGINA
-    # ==========================================================
+    def _ir_al_final(self):
+        self._indice_ventana = max(0, len(self._paginas_letras) - BOTONES_LETRA_VISIBLES)
+        self._renderizar_botones_letras()
 
-    def _ir_a_pagina(self, pagina):
+    def _cargar_productos_de_pagina_actual(self):
+        pagina = self._paginas_letras[self._indice_pagina_actual]
+        productos = self.repositorio.obtener_productos_por_letra(
+            self.numEspecie, pagina.letra, pagina.offset, TAMANO_PAGINA
+        )
+        self._mostrar_productos(productos)
 
-        if pagina < 1:
+    # ------------------------------------------------------------------
+    # Filtro por PLU
+    # ------------------------------------------------------------------
+    def _aplicar_filtro_plu(self):
+        texto = self.campo_filtro_plu.text().strip()
+        if not texto:
+            self._layout_paginador_visible(True)
+            self._cargar_productos_de_pagina_actual()
             return
 
-        if pagina > self.total_paginas:
+        self._layout_paginador_visible(False)
+        productos = self.repositorio.buscar_productos_por_plu(self.numEspecie, texto)
+        self._mostrar_productos(productos)
+
+    def _layout_paginador_visible(self, visible):
+        for boton in (self.boton_primero, self.boton_anterior, self.boton_siguiente, self.boton_ultimo):
+            boton.setVisible(visible)
+        for i in range(self._layout_letras.count()):
+            widget = self._layout_letras.itemAt(i).widget()
+            if widget is not None:
+                widget.setVisible(visible)
+
+    # ------------------------------------------------------------------
+    # Grilla de productos
+    # ------------------------------------------------------------------
+    def _mostrar_productos(self, productos):
+        while self._layout_grilla.count():
+            item = self._layout_grilla.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        if not productos:
+            self._mostrar_mensaje_vacio()
             return
 
-        self.pagina_actual = pagina
+        for indice, producto in enumerate(productos):
+            fila, columna = divmod(indice, COLUMNAS_GRILLA)
+            tarjeta = ProductoWidget(producto)
+            tarjeta.clicked.connect(self._abrir_ficha_tecnica)
+            self._layout_grilla.addWidget(tarjeta, fila, columna)
 
-        self._cargar_pagina()
-
-    # ==========================================================
-    # LIMPIAR MATRIZ
-    # ==========================================================
-
-    def _limpiar_matriz(self):
-
-        while self.matriz_productos.count():
-
-            item = self.matriz_productos.takeAt(0)
-
+    def _mostrar_mensaje_vacio(self):
+        while self._layout_grilla.count():
+            item = self._layout_grilla.takeAt(0)
             widget = item.widget()
-
-            if widget:
+            if widget is not None:
                 widget.deleteLater()
+        mensaje = QLabel("No se encontraron productos.")
+        mensaje.setAlignment(Qt.AlignCenter)
+        mensaje.setStyleSheet(f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: 14px; margin: 24px;")
+        self._layout_grilla.addWidget(mensaje, 0, 0, 1, COLUMNAS_GRILLA)
 
-    # ==========================================================
-    # LIMPIAR PAGINACIÓN
-    # ==========================================================
-
-    def _limpiar_paginacion(self):
-
-        while self.layout_paginacion.count():
-
-            item = self.layout_paginacion.takeAt(0)
-
-            widget = item.widget()
-
-            if widget:
-                widget.deleteLater()
-
-    # ==========================================================
-    # FICHA TÉCNICA
-    # ==========================================================
-
+    # ------------------------------------------------------------------
+    # Navegación a otras pantallas
+    # ------------------------------------------------------------------
     def _abrir_ficha_tecnica(self, producto):
+        # FichaTecnica espera un diccionario (usa producto.get('nombre', '')),
+        # así que convertimos el objeto Producto antes de pasarlo.
+        producto_dict = {
+            "cdgo_plu": producto.cdgo_plu,
+            "nombre": producto.nom_prog,
+            "imagen": producto.imagen_principal,
+        }
+
         self.ventana_ficha_tecnica = FichaTecnica(
             usuario=self.usuario,
-            producto=producto,  # ahora es el diccionario completo, no solo el nombre
+            producto=producto_dict,
             fecha_produccion=self.fecha_produccion,
             especie=self.especie,
             numEspecie=self.numEspecie,
-            lote=self.campo_lote.currentText() if hasattr(self, "campo_lote") else (self.lotes[0].lote if self.lotes else ""),
+            lote=self._obtener_valor_lote(),
         )
         self.ventana_ficha_tecnica.show()
+        self.close()
+
+    def _volver_a_principal(self):
+        from ui.ventana_principal import VentanaPrincipal
+
+        self.ventana_principal = VentanaPrincipal(self.usuario)
+        self.ventana_principal.show()
         self.close()
