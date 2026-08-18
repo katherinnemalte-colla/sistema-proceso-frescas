@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QApplication, QDialog
-from controllers.etiquetas_controller import EtiquetasController
+#from controllers.etiquetas_controller import EtiquetasController
 import sys
 from ui.ventana_login import VentanaLogin
 from ui.ventana_principal import VentanaPrincipal
