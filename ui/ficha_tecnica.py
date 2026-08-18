@@ -1,15 +1,3 @@
-"""
-Ventana "Ficha técnica del producto".
-Se abre al elegir un producto en SeleccionDeProducto.
-
-Datos reales (vienen de la consulta con las 6 imágenes):
-  producto["nombre"], producto["cdgo_plu"],
-  producto["imagen"], producto["imagen_2"] ... producto["imagen_6"]
-
-Datos QUEMADOS temporalmente (no existen aún en la base de datos):
-  Descripción, Presentación, Conservación.
-  Búscalos con "# QUEMADO" para reemplazarlos cuando tengas la columna real.
-"""
 
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame, QGridLayout,
