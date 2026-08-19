@@ -1,8 +1,3 @@
-"""
-Ventana de login de la aplicación Cialta.
-La lógica de autenticación continúa delegada a auth_service.
-"""
-
 import sys
 
 from PySide6.QtWidgets import (
@@ -153,7 +148,7 @@ class VentanaLogin(QDialog):
         fondo.setObjectName("fondo")
 
         pixmap_fondo = QPixmap(
-            "assets/login/fondo_login.jpg"
+            "assets/icons/login/fondo_login.png"
         )
 
         fondo.setPixmap(
@@ -176,7 +171,7 @@ class VentanaLogin(QDialog):
         capa.setStyleSheet("""
             #capa {
                 background-color: rgba(3, 30, 34, 190);
-                border-radius: 18px;
+                border-radius: 0px;
             }
         """)
 
@@ -228,6 +223,9 @@ class VentanaLogin(QDialog):
 
         self.campo_usuario = QLineEdit()
         self.campo_usuario.setPlaceholderText("Usuario")
+        #self.campo_usuario.textChanged.connect(self.forzar_mayusculas)
+        self.campo_usuario.textChanged.connect(
+        lambda texto: self.campo_usuario.setText(texto.upper()))
 
         self.campo_clave = QLineEdit()
         self.campo_clave.setPlaceholderText("Contraseña")
