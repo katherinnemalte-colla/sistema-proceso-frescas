@@ -244,11 +244,6 @@ class ObtenerTipoPzaRepository:
         tpo_pza: int,
         cdgo_plu: str,
     ) -> Optional[ProductoConImagenes]:
-        """
-        A diferencia de los métodos anteriores, esta consulta SÍ se
-        filtra también por cdgo_plu: Ficha Técnica muestra un solo
-        producto con sus 6 imágenes, no toda la lista de esa pieza.
-        """
 
         consulta = f"""
             SELECT

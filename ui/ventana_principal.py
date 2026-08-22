@@ -865,7 +865,7 @@ class VentanaPrincipal(QWidget):
             return
 
         # --------------------------------------------------------------
-        # NOTA: tpo_pza / nombre_tipo_pieza / imagenes solo llegan con
+        # tpo_pza / nombre_tipo_pieza / imagenes solo llegan con
         # datos cuando la especie es RES. SeleccionDeProducto necesita
         # aceptar estos kwargs (o ignorarlos) para que esto no rompa
         # el flujo de las demás especies.
