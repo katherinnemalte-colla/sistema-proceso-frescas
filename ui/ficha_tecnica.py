@@ -1,18 +1,29 @@
-
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame, QGridLayout,
-    QVBoxLayout, QHBoxLayout, QDateEdit
+    QVBoxLayout, QHBoxLayout, QDateEdit, QButtonGroup, QSizePolicy
 )
 from PySide6.QtCore import Qt, QSize, QDate
 from PySide6.QtGui import QPixmap, QIcon
 
 from utils.ventana_utils import aplicar_tamano
+from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
+from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
 
 ANCHO_CONTENIDO = 950
 
 
 class FichaTecnica(QWidget):
-    def __init__(self, usuario, producto: dict, fecha_produccion: str, especie: str, numEspecie, lote: str):
+    def __init__(
+        self,
+        usuario,
+        producto: dict,
+        fecha_produccion: str,
+        especie: str,
+        numEspecie,
+        lote: str,
+        tpo_pza=None,
+        nombre_tipo_pieza=None,
+    ):
         super().__init__()
         self.usuario = usuario
         self.producto = producto
@@ -20,15 +31,44 @@ class FichaTecnica(QWidget):
         self.especie = especie
         self.numEspecie = int(numEspecie)
         self.lote = lote
+        self.tpo_pza = tpo_pza
+        self.nombre_tipo_pieza = nombre_tipo_pieza
 
         self.seleccion_de_producto = None
         self.peso_actual = 0.000  # placeholder: aquí se conectará la báscula real
+
+        # ------------------------------------------------------------
+        # LAS 6 IMÁGENES: solo se consultan cuando viene de RES
+        # (tpo_pza no es None). El diccionario "producto" que llega de
+        # SeleccionDeProducto solo trae la imagen principal, así que
+        # las 5 adicionales se piden acá con obtener_producto_completo.
+        # ------------------------------------------------------------
+        self.producto_completo = None
+        if self.tpo_pza is not None:
+            repositorio_imagenes = ObtenerTipoPzaRepository(self._obtener_conexion)
+            self.producto_completo = repositorio_imagenes.obtener_producto_completo(
+                self.tpo_pza,
+                str(self.producto.get("cdgo_plu", "")),
+            )
+
+        # ------------------------------------------------------------
+        # TIPOS DE LIMPIEZA (catálogo, botón seleccionable exclusivo)
+        # ------------------------------------------------------------
+        self.tipo_limpieza_seleccionado = None
+        self._grupo_limpieza = None
 
         self.setWindowTitle(f"Ficha técnica - {producto.get('nombre', '')}")
         aplicar_tamano(self, modo="completo")
         self.setStyleSheet("QWidget { background-color: #F5F8F8; }")
 
         self._crear_interfaz()
+
+    # ==============================================================
+    # CONEXIÓN A BD — mismo patrón que SeleccionDeProducto
+    # ==============================================================
+    def _obtener_conexion(self):
+        from models.database import obtener_conexion  # import local para evitar ciclos
+        return obtener_conexion()
 
     # ==============================================================
     # INTERFAZ
@@ -107,6 +147,11 @@ class FichaTecnica(QWidget):
         layout.addWidget(self._crear_galeria_imagenes())
 
         # ----------------------------------------------------------
+        # TIPO DE LIMPIEZA (catálogo dinámico, selección exclusiva)
+        # ----------------------------------------------------------
+        layout.addWidget(self._crear_seccion_tipo_limpieza())
+
+        # ----------------------------------------------------------
         # FILA: báscula + datos adicionales
         # ----------------------------------------------------------
         fila_inferior = QHBoxLayout()
@@ -118,14 +163,14 @@ class FichaTecnica(QWidget):
         layout.addLayout(fila_inferior)
 
         # ----------------------------------------------------------
-        # BOTONES: Tara + Guardar peso
+        # BOTONES: Ir a inicio + Guardar peso
         # ----------------------------------------------------------
         fila_botones = QHBoxLayout()
         fila_botones.setSpacing(12)
 
-        boton_tara = QPushButton("⚖  Tara")
-        boton_tara.setFixedHeight(50)
-        boton_tara.setStyleSheet("""
+        boton_inicio = QPushButton("Ir a inicio")
+        boton_inicio.setFixedHeight(50)
+        boton_inicio.setStyleSheet("""
             QPushButton {
                 background-color: white;
                 color: #115E67;
@@ -138,9 +183,9 @@ class FichaTecnica(QWidget):
                 background-color: #EAF4F5;
             }
         """)
-        boton_tara.clicked.connect(self._aplicar_tara)
+        boton_inicio.clicked.connect(self._volver_a_inicio)
 
-        boton_guardar = QPushButton("💾  Guardar peso")
+        boton_guardar = QPushButton("Imprime")
         boton_guardar.setFixedHeight(50)
         boton_guardar.setStyleSheet("""
             QPushButton {
@@ -157,7 +202,7 @@ class FichaTecnica(QWidget):
         """)
         boton_guardar.clicked.connect(self._guardar_peso)
 
-        fila_botones.addWidget(boton_tara)
+        fila_botones.addWidget(boton_inicio)
         fila_botones.addWidget(boton_guardar)
         layout.addLayout(fila_botones)
 
@@ -184,18 +229,36 @@ class FichaTecnica(QWidget):
         etiqueta_imagen = QLabel()
         etiqueta_imagen.setAlignment(Qt.AlignCenter)
 
-        imagen_bytes = self.producto.get("imagen")
-        if imagen_bytes:
-            pixmap = QPixmap()
-            if pixmap.loadFromData(imagen_bytes, "JPG"):
-                pixmap = pixmap.scaled(280, 240, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                etiqueta_imagen.setPixmap(pixmap)
+        imagen_raw = self.producto.get("imagen")
+        imagen_bytes = self._normalizar_imagen_bytes(imagen_raw)
+
+        pixmap = QPixmap()
+        if imagen_bytes and pixmap.loadFromData(imagen_bytes):  # sin formato forzado
+            pixmap = pixmap.scaled(280, 240, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            etiqueta_imagen.setPixmap(pixmap)
         else:
             etiqueta_imagen.setText("Sin imagen")
             etiqueta_imagen.setStyleSheet("color: #999; font-size: 13px;")
 
         layout.addWidget(etiqueta_imagen)
         return marco
+
+    def _normalizar_imagen_bytes(self, valor):
+        """Convierte lo que venga de la BD a bytes reales, o None si no hay nada usable."""
+        if not valor:
+            return None
+        if isinstance(valor, (bytes, bytearray)):
+            return bytes(valor)
+        if isinstance(valor, str):
+            import base64
+            try:
+                # Caso típico: string base64 (con o sin prefijo data:image/...;base64,)
+                if valor.startswith("data:image"):
+                    valor = valor.split(",", 1)[1]
+                return base64.b64decode(valor)
+            except Exception:
+                return None
+        return None
 
     # ==============================================================
     # INFORMACIÓN DEL PRODUCTO
@@ -224,6 +287,10 @@ class FichaTecnica(QWidget):
             ("PLU:", str(self.producto.get("cdgo_plu", "-"))),
             ("Especie:", self.especie),
         ]
+
+        # Solo aparece en el flujo RES, cuando sí hay tipo de pieza.
+        if self.tpo_pza is not None and self.nombre_tipo_pieza:
+            datos.append(("Tipo de pieza:", self.nombre_tipo_pieza))
 
         for etiqueta_texto, valor_texto in datos:
             fila = QHBoxLayout()
@@ -267,10 +334,22 @@ class FichaTecnica(QWidget):
         fila_miniaturas = QHBoxLayout()
         fila_miniaturas.setSpacing(12)
 
-        claves_imagenes = ["imagen_2", "imagen_3", "imagen_4", "imagen_5", "imagen_6"]
+        # Antes se leían de self.producto.get("imagen_2".."imagen_6"),
+        # que nunca llegaban ahí. Ahora salen de self.producto_completo,
+        # traído con ObtenerTipoPzaRepository.obtener_producto_completo.
+        if self.producto_completo is not None:
+            imagenes_extra = [
+                self.producto_completo.con_arch_2,
+                self.producto_completo.con_arch_3,
+                self.producto_completo.con_arch_4,
+                self.producto_completo.con_arch_5,
+                self.producto_completo.con_arch_6,
+            ]
+        else:
+            imagenes_extra = [None, None, None, None, None]
 
-        for numero, clave in enumerate(claves_imagenes, start=1):
-            fila_miniaturas.addWidget(self._crear_miniatura(numero, self.producto.get(clave)))
+        for numero, imagen_bytes in enumerate(imagenes_extra, start=2):
+            fila_miniaturas.addWidget(self._crear_miniatura(numero, imagen_bytes))
 
         fila_miniaturas.addStretch()
         layout_externo.addLayout(fila_miniaturas)
@@ -294,17 +373,107 @@ class FichaTecnica(QWidget):
         etiqueta = QLabel()
         etiqueta.setAlignment(Qt.AlignCenter)
 
-        if imagen_bytes:
+        datos = self._normalizar_imagen_bytes(imagen_bytes)
+
+        if datos:
             pixmap = QPixmap()
-            if pixmap.loadFromData(imagen_bytes, "JPG"):
+            # Sin forzar "JPG": algunas de estas imágenes pueden ser
+            # PNG u otro formato, y loadFromData detecta el formato
+            # solo si no se lo forzamos.
+            if pixmap.loadFromData(datos):
                 pixmap = pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 etiqueta.setPixmap(pixmap)
+            else:
+                etiqueta.setText(str(numero))
+                etiqueta.setStyleSheet("color: #999; font-size: 20px; font-weight: bold;")
         else:
             etiqueta.setText(str(numero))
             etiqueta.setStyleSheet("color: #999; font-size: 20px; font-weight: bold;")
 
         layout.addWidget(etiqueta)
         return contenedor
+
+    # ==============================================================
+    # TIPO DE LIMPIEZA (catálogo dinámico desde tpo_lmpza)
+    # ==============================================================
+
+    def _crear_seccion_tipo_limpieza(self) -> QFrame:
+        marco = QFrame()
+        marco.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #D9E2E4;
+                border-radius: 12px;
+            }
+        """)
+
+        layout = QVBoxLayout(marco)
+        layout.setContentsMargins(16, 12, 16, 16)
+        layout.setSpacing(10)
+
+        titulo = QLabel("Tipo de limpieza")
+        titulo.setStyleSheet("font-size: 14px; font-weight: bold; color: #115E67;")
+        layout.addWidget(titulo)
+
+        fila_botones = QHBoxLayout()
+        fila_botones.setSpacing(10)
+
+        try:
+            repositorio_limpieza = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
+            tipos_limpieza = repositorio_limpieza.obtener_tipos_limpieza()
+        except Exception as e:
+            print("No fue posible cargar tipos de limpieza:", e)
+            tipos_limpieza = []
+
+        self._grupo_limpieza = QButtonGroup(self)
+        self._grupo_limpieza.setExclusive(True)
+
+        if not tipos_limpieza:
+            etiqueta_vacio = QLabel("No hay tipos de limpieza configurados.")
+            etiqueta_vacio.setStyleSheet("color: #999; font-size: 13px;")
+            fila_botones.addWidget(etiqueta_vacio)
+        else:
+            for tipo in tipos_limpieza:
+                boton = QPushButton(tipo.nmbre or f"Tipo {tipo.tpo_lmpza}")
+                boton.setCheckable(True)
+                boton.setCursor(Qt.PointingHandCursor)
+                boton.setMinimumHeight(42)
+                boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                boton.setProperty("tpo_lmpza", tipo.tpo_lmpza)
+                boton.setProperty("nombre_limpieza", tipo.nmbre)
+
+                boton.setStyleSheet("""
+                    QPushButton {
+                        background-color: white;
+                        color: #115E67;
+                        border: 1px solid #D9E2E4;
+                        border-radius: 10px;
+                        font-size: 13px;
+                        font-weight: 600;
+                    }
+                    QPushButton:hover {
+                        background-color: #EAF4F5;
+                    }
+                    QPushButton:checked {
+                        background-color: #115E67;
+                        color: white;
+                        border: 1px solid #115E67;
+                    }
+                """)
+
+                self._grupo_limpieza.addButton(boton)
+                fila_botones.addWidget(boton)
+
+            self._grupo_limpieza.buttonClicked.connect(self._tipo_limpieza_elegido)
+
+        fila_botones.addStretch()
+        layout.addLayout(fila_botones)
+
+        return marco
+
+    def _tipo_limpieza_elegido(self, boton):
+        self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
+        print("Tipo de limpieza seleccionado:", boton.property("nombre_limpieza"))
 
     # ==============================================================
     # BÁSCULA - PESO (placeholder, sin hardware conectado todavía)
@@ -374,20 +543,6 @@ class FichaTecnica(QWidget):
         etiqueta_fecha.setStyleSheet("color: #666; font-size: 13px;")
         layout.addWidget(etiqueta_fecha)
 
-        self.campo_fecha_vencimiento = QDateEdit()
-        self.campo_fecha_vencimiento.setCalendarPopup(True)
-        self.campo_fecha_vencimiento.setDisplayFormat("dd/MM/yyyy")
-        self.campo_fecha_vencimiento.setDate(QDate.currentDate().addDays(7))  # QUEMADO: +7 días por defecto
-        self.campo_fecha_vencimiento.setFixedHeight(38)
-        self.campo_fecha_vencimiento.setStyleSheet("""
-            QDateEdit {
-                border: 1px solid #D9E2E4;
-                border-radius: 8px;
-                padding: 4px 10px;
-                background-color: white;
-            }
-        """)
-        layout.addWidget(self.campo_fecha_vencimiento)
 
         layout.addStretch()
         return marco
@@ -396,12 +551,6 @@ class FichaTecnica(QWidget):
     # ACCIONES
     # ==============================================================
 
-    def _aplicar_tara(self):
-        # Placeholder: aquí se conectará la báscula física real más adelante.
-        self.peso_actual = 0.000
-        self.etiqueta_peso.setText(f"{self.peso_actual:.3f}")
-        self.etiqueta_peso_neto.setText(f"Peso neto        {self.peso_actual:.3f} kg")
-
     def _guardar_peso(self):
         # Placeholder: aquí se guardará el peso + fecha de vencimiento en la base de datos.
         datos = {
@@ -409,7 +558,7 @@ class FichaTecnica(QWidget):
             "cdgo_plu": self.producto.get("cdgo_plu"),
             "lote": self.lote,
             "peso": self.peso_actual,
-            "fecha_vencimiento": self.campo_fecha_vencimiento.date().toString("yyyy-MM-dd"),
+            "tipo_limpieza": self.tipo_limpieza_seleccionado,
         }
         print("Guardar peso:", datos)
 
@@ -426,7 +575,16 @@ class FichaTecnica(QWidget):
             fecha_produccion=self.fecha_produccion,
             especie=self.especie,
             numEspecie=self.numEspecie,
+            tpo_pza=self.tpo_pza,
+            nombre_tipo_pieza=self.nombre_tipo_pieza,
             lotes=lotes,
         )
         self.seleccion_de_producto.show()
+        self.close()
+
+    def _volver_a_inicio(self):
+        from ui.ventana_principal import VentanaPrincipal
+
+        self.ventana_principal = VentanaPrincipal(self.usuario)
+        self.ventana_principal.show()
         self.close()

@@ -1,7 +1,7 @@
+import os
 import math
 from dataclasses import dataclass, field
 from typing import List, Optional
-import os
 
 DB_PRODUCTOS = os.getenv("DB_DATABASE")
 DB_IMAGENES = os.getenv("DB_DATABASE_1")
@@ -65,11 +65,7 @@ class ImagenRepository:
     """
 
     def __init__(self, conexion_factory):
-        """
-        :param conexion_factory: callable que devuelve una conexión pyodbc
-            abierta (usable como context manager) hacia el servidor
-            SISTEMAS3\\PRUEBASSIPPC. Ej: database.obtener_conexion
-        """
+
         self._conexion_factory = conexion_factory
 
     # ------------------------------------------------------------------
@@ -186,14 +182,5 @@ class ImagenRepository:
         return Producto(
             cdgo_plu=str(fila.cdgo_plu),
             nom_prog=fila.nom_prog,
-            imagenes=[
-                fila.con_arch,
-            """
-                fila.con_arch_2,
-                fila.con_arch_3,
-                fila.con_arch_4,
-                fila.con_arch_5,
-                fila.con_arch_6,
-            """
-            ],
+            imagenes=fila.con_arch,
         )

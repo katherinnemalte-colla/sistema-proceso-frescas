@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QCalendarWidget,
     QSizePolicy,
+    QStackedWidget,
 )
 
 from PySide6.QtGui import QIcon, QPixmap
@@ -35,35 +36,23 @@ RUTA_ICONOS = os.path.join(
     "icons"
 )
 
-
-# ==============================================================
-# ESPECIES
-# ==============================================================
-#
-# id_especie:
-#   identificador interno de la aplicación.
-#
-# etiqueta:
-#   nombre que ve el usuario.
-#
-# archivo_icono:
-#   imagen que se muestra en el botón.
-#
-# color:
-#   color de acento de la tarjeta (encabezado + pie "Seleccionar").
-#
-# ==============================================================
-
 ESPECIES = [
     (1, "RES", "res.png", "#C0392B"),
     (2, "CERDO", "cerdo.png", "#E75480"),
     (3, "TERNERA", "ternera.png", "#6D4C41"),
 ]
 
-# Ancho máximo del bloque central de contenido.
-# Todo (título, campos, botones) se alinea dentro de este ancho,
-# y ese bloque se centra dentro de la ventana. Ya no es un ancho
-# fijo: puede encogerse en pantallas pequeñas.
+# Solo la especie RES (vaca) tiene el paso adicional de
+# seleccionar tipo de pieza (DELANTERO/TRASERO).
+ID_ESPECIE_RES = 1
+
+# tpo_pza=1 -> DELANTEROS, tpo_pza=2 -> TRASEROS (según la tabla
+# tpo_pzas_espcies).
+TIPOS_PIEZA = [
+    (1, "DELANTERO", "#1E6FD9"),
+    (2, "TRASERO", "#1E9E5A"),
+]
+
 ANCHO_CONTENIDO_MAX = 760
 ANCHO_CONTENIDO_MIN = 380
 
@@ -80,7 +69,7 @@ class VentanaPrincipal(QWidget):
         self.usuario = usuario
 
         # ----------------------------------------------------------
-        # REPOSITORY
+        # REPOSITORIES
         # ----------------------------------------------------------
 
         self.repository = ObtenerLoteFechaRepository()
@@ -92,6 +81,10 @@ class VentanaPrincipal(QWidget):
         self.especie_seleccionada = None
         self.ventana_seleccion_producto = None
 
+        # Datos de la especie/fecha pendientes mientras se muestra
+        # el panel de tipo de pieza (solo aplica para RES).
+        self._nombre_especie_pendiente = None
+
         # Tarjetas de especie, para poder resaltar la seleccionada
         # (solo afecta estilos, no la lógica de selección).
         self._tarjetas_especies = {}
@@ -100,7 +93,7 @@ class VentanaPrincipal(QWidget):
         # CONFIGURACIÓN VENTANA
         # ----------------------------------------------------------
 
-        self.setWindowTitle("Lote y Datos")
+        self.setWindowTitle("Etiquetas para Piezas + Canastillas- 2 en 1")
 
         aplicar_tamano(
             self,
@@ -150,29 +143,18 @@ class VentanaPrincipal(QWidget):
         layout_externo.addStretch()
 
         # ==========================================================
-        # ICONO CIRCULAR + TÍTULO + SUBTÍTULO (centrados)
+        # TÍTULO + SUBTÍTULO (centrados)
         # ==========================================================
 
-        icono_encabezado = QLabel("📋")
-        icono_encabezado.setAlignment(Qt.AlignCenter)
-        icono_encabezado.setFixedSize(56, 56)
-        icono_encabezado.setStyleSheet("""
-            QLabel {
-                background-color: #E4F1F2;
-                border-radius: 28px;
-                font-size: 22px;
-            }
-        """)
 
         fila_icono = QHBoxLayout()
         fila_icono.addStretch()
-        fila_icono.addWidget(icono_encabezado)
         fila_icono.addStretch()
 
         layout.addLayout(fila_icono)
 
         titulo = QLabel(
-            "Lote y datos"
+            "Etiquetado Carnes Frescas"
         )
 
         titulo.setAlignment(Qt.AlignCenter)
@@ -229,7 +211,7 @@ class VentanaPrincipal(QWidget):
 
         contenedor_fecha = self._envolver_campo(
             self.campo_fecha,
-            "📅"
+            "calendar.png"
         )
 
         columna_fecha.addWidget(etiqueta_fecha)
@@ -250,7 +232,7 @@ class VentanaPrincipal(QWidget):
 
         contenedor_lote = self._envolver_campo(
             self.campo_lote,
-            "📦"
+            "lote.png"
         )
 
         columna_lote.addWidget(etiqueta_lote)
@@ -282,11 +264,51 @@ class VentanaPrincipal(QWidget):
         layout.addSpacing(6)
 
         # ==========================================================
-        # PIE - CONTINUAR (botón grande, azul, centrado)
+        # PIE: se alterna entre "Continuar" y "Tipo de pieza"
+        # ==========================================================
+        # Usamos un QStackedWidget para que, al elegir RES, el
+        # botón Continuar sea reemplazado por DELANTERO/TRASERO
+        # en el mismo espacio, y vuelva a Continuar si se
+        # deselecciona la especie o se elige una distinta de RES.
+
+        self.stack_pie = QStackedWidget()
+
+        self.pagina_continuar = self._crear_pagina_continuar()
+        self.pagina_tipo_pieza = self._crear_pagina_tipo_pieza()
+
+        self.stack_pie.addWidget(self.pagina_continuar)   # índice 0
+        self.stack_pie.addWidget(self.pagina_tipo_pieza)  # índice 1
+
+        layout.addWidget(self.stack_pie)
+
+        self.setLayout(
+            layout_externo
+        )
+
+        # ==========================================================
+        # EVENTOS
         # ==========================================================
 
-        pie = QHBoxLayout()
+        self.campo_fecha.dateChanged.connect(
+            self._fecha_cambiada
+        )
 
+        # ==========================================================
+        # CARGA INICIAL
+        # ==========================================================
+
+        self._cargar_lotes()
+
+    # ==============================================================
+    # PÁGINA: BOTÓN CONTINUAR (pie por defecto)
+    # ==============================================================
+
+    def _crear_pagina_continuar(self) -> QWidget:
+
+        pagina = QWidget()
+
+        pie = QHBoxLayout(pagina)
+        pie.setContentsMargins(0, 0, 0, 0)
         pie.addStretch()
 
         boton_continuar = QPushButton(
@@ -329,37 +351,81 @@ class VentanaPrincipal(QWidget):
 
         pie.addStretch()
 
-        layout.addLayout(
-            pie
+        return pagina
+
+    # ==============================================================
+    # PÁGINA: TIPO DE PIEZA (DELANTERO / TRASERO) - solo RES
+    # ==============================================================
+
+    def _crear_pagina_tipo_pieza(self) -> QWidget:
+
+        pagina = QWidget()
+
+        layout_panel = QVBoxLayout(pagina)
+        layout_panel.setContentsMargins(0, 0, 0, 0)
+        layout_panel.setSpacing(8)
+
+        etiqueta = QLabel("Seleccione la parte del animal")
+        etiqueta.setAlignment(Qt.AlignCenter)
+        etiqueta.setStyleSheet(
+            "font-size: 13px; color: #444; font-weight: 600;"
         )
 
-        self.setLayout(
-            layout_externo
-        )
+        layout_panel.addWidget(etiqueta)
 
-        # ==========================================================
-        # EVENTOS
-        # ==========================================================
+        fila_botones = QHBoxLayout()
+        fila_botones.setSpacing(16)
 
-        self.campo_fecha.dateChanged.connect(
-            self._fecha_cambiada
-        )
+        for tpo_pza, nombre_tipo, color in TIPOS_PIEZA:
 
-        # ==========================================================
-        # CARGA INICIAL
-        # ==========================================================
+            boton = QPushButton(nombre_tipo)
 
-        self._cargar_lotes()
+            boton.setCursor(Qt.PointingHandCursor)
+            boton.setMinimumSize(160, 52)
+            boton.setSizePolicy(
+                QSizePolicy.Expanding,
+                QSizePolicy.Fixed
+            )
+
+            boton.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {color};
+                    color: white;
+                    font-size: 15px;
+                    font-weight: 700;
+                    border: none;
+                    border-radius: 10px;
+                }}
+                QPushButton:hover {{
+                    background-color: {color};
+                    border: 2px solid #115E67;
+                }}
+                QPushButton:pressed {{
+                    background-color: #115E67;
+                }}
+            """)
+
+            boton.clicked.connect(
+                lambda _=False, tp=tpo_pza, nt=nombre_tipo:
+                    self._tipo_pieza_elegido(tp, nt)
+            )
+
+            fila_botones.addWidget(boton)
+
+        layout_panel.addLayout(fila_botones)
+
+        return pagina
 
     # ==============================================================
     # CAMPO CON ICONO (fecha / lote)
     # ==============================================================
 
-    def _envolver_campo(self, campo, emoji_icono):
+    def _envolver_campo(self, campo, nombre_archivo_icono):
         """
         Envuelve un QDateEdit/QComboBox en un contenedor con borde
-        redondeado y un pequeño icono a la izquierda, para que el
-        icono se vea "dentro" del campo, como en el diseño.
+        redondeado y un ícono a la izquierda, cargado desde
+        assets/icons/<nombre_archivo_icono> en vez de un emoji fijo
+        en el código.
         """
 
         campo.setFixedHeight(38)
@@ -376,9 +442,20 @@ class VentanaPrincipal(QWidget):
             }
         """)
 
-        icono = QLabel(emoji_icono)
-        icono.setStyleSheet("font-size: 14px; color: #115E67;")
-        icono.setFixedWidth(20)
+        icono = QLabel()
+        icono.setFixedSize(20, 20)
+        icono.setAlignment(Qt.AlignCenter)
+
+        ruta_icono = os.path.join(RUTA_ICONOS, nombre_archivo_icono)
+
+        if os.path.isfile(ruta_icono):
+            pixmap = QIcon(ruta_icono).pixmap(QSize(16, 16))
+            icono.setPixmap(pixmap)
+        else:
+            # Fallback si el archivo no existe, para no dejar la UI rota
+            icono.setText("•")
+            icono.setStyleSheet("font-size: 14px; color: #115E67;")
+            print(f"no existe el ícono: {ruta_icono}")
 
         contenedor = QFrame()
         contenedor.setFixedHeight(38)
@@ -483,10 +560,11 @@ class VentanaPrincipal(QWidget):
         nombre, y un pie de color con el botón "Seleccionar".
 
         El botón del pie es el que queda dentro del QButtonGroup
-        (checkable, exclusivo), exactamente como antes: conserva
-        las propiedades id_especie / nombre_especie y sigue siendo
-        el que dispara _especie_elegida. Lo único nuevo es la
-        tarjeta que lo envuelve visualmente.
+        ahora manejado de forma manual (setExclusive(False)) para
+        poder soportar la deselección: si se hace clic sobre la
+        tarjeta ya seleccionada, se quita la selección en vez de
+        quedar "atascada" (comportamiento por defecto de un grupo
+        exclusivo en Qt).
         """
 
         fila = QHBoxLayout()
@@ -498,8 +576,10 @@ class VentanaPrincipal(QWidget):
             self
         )
 
+        # Exclusividad manejada a mano en _especie_elegida, para
+        # poder permitir deseleccionar la tarjeta activa.
         self.grupo_especies.setExclusive(
-            True
+            False
         )
 
         for id_especie, etiqueta, archivo_icono, color in ESPECIES:
@@ -567,15 +647,14 @@ class VentanaPrincipal(QWidget):
             layout_tarjeta.addWidget(nombre)
 
             # ------------------------------------------------------
-            # BOTÓN "SELECCIONAR" (el checkable real, en el grupo)
+            # BOTÓN "SELECCIONAR" (checkable, exclusividad manual)
             # ------------------------------------------------------
 
-            #lote = self.campo_lote.
-            
+
+
             boton = QPushButton("Seleccionar   ›")
 
-            
-
+            boton.setCheckable(True)
             boton.setCursor(Qt.PointingHandCursor)
             boton.setMinimumHeight(40)
 
@@ -658,26 +737,104 @@ class VentanaPrincipal(QWidget):
                 """)
 
     # ==============================================================
-    # ESPECIE SELECCIONADA
+    # ESPECIE SELECCIONADA / DESELECCIONADA
     # ==============================================================
 
     def _especie_elegida(self, boton):
 
-        self.especie_seleccionada = boton.property(
-            "id_especie"
-        )
-        id_especie = boton.property(
-            "id_especie"
-        )
-        nombre_especie = boton.property(
-            "nombre_especie"
-        )
+        id_especie = boton.property("id_especie")
+        nombre_especie = boton.property("nombre_especie")
 
+        # ------------------------------------------------------------
+        # CASO 1: se hizo clic sobre la tarjeta ya seleccionada
+        # -> se interpreta como "quitar selección".
+        # ------------------------------------------------------------
+
+        if self.especie_seleccionada == id_especie:
+
+            boton.setChecked(False)
+
+            self.especie_seleccionada = None
+            self._nombre_especie_pendiente = None
+
+            self._resaltar_tarjeta(id_especie)
+            self._ocultar_panel_tipo_pieza()
+
+            return
+
+        # ------------------------------------------------------------
+        # CASO 2: nueva selección -> desmarcar las demás tarjetas
+        # ------------------------------------------------------------
+
+        for otro_boton in self.grupo_especies.buttons():
+            if otro_boton is not boton:
+                otro_boton.setChecked(False)
+
+        boton.setChecked(True)
+
+        self.especie_seleccionada = id_especie
         self._resaltar_tarjeta(id_especie)
 
-        # ----------------------------------------------------------
-        # FILTRAR POR FECHA + ESPECIE
-        # ----------------------------------------------------------
+        # ------------------------------------------------------------
+        # RES: mostrar panel de tipo de pieza en vez de continuar
+        # directo. Otras especies: comportamiento original.
+        # ------------------------------------------------------------
+
+        if id_especie == ID_ESPECIE_RES:
+
+            self._nombre_especie_pendiente = nombre_especie
+            self._mostrar_panel_tipo_pieza()
+
+        else:
+
+            self._ocultar_panel_tipo_pieza()
+            self._avanzar_a_seleccion_producto(
+                id_especie,
+                nombre_especie
+            )
+
+    # ==============================================================
+    # MOSTRAR / OCULTAR PANEL DE TIPO DE PIEZA
+    # ==============================================================
+
+    def _mostrar_panel_tipo_pieza(self):
+        self.stack_pie.setCurrentWidget(self.pagina_tipo_pieza)
+
+    def _ocultar_panel_tipo_pieza(self):
+        self.stack_pie.setCurrentWidget(self.pagina_continuar)
+
+    # ==============================================================
+    # TIPO DE PIEZA ELEGIDO (DELANTERO / TRASERO)
+    # ==============================================================
+
+    def _tipo_pieza_elegido(self, tpo_pza, nombre_tipo_pieza):
+
+        if self.especie_seleccionada != ID_ESPECIE_RES:
+            # Salvaguarda: el panel solo debería estar visible
+            # cuando la especie seleccionada es RES.
+            return
+
+
+        print(f"Pieza seleccionada: {nombre_tipo_pieza}")
+
+        self._avanzar_a_seleccion_producto(
+            ID_ESPECIE_RES,
+            self._nombre_especie_pendiente,
+            tpo_pza=tpo_pza,
+            nombre_tipo_pieza=nombre_tipo_pieza,
+        )
+
+    # ==============================================================
+    # AVANZAR A LA VENTANA DE SELECCIÓN DE PRODUCTO
+    # ==============================================================
+
+    def _avanzar_a_seleccion_producto(
+        self,
+        id_especie,
+        nombre_especie,
+        tpo_pza=None,
+        nombre_tipo_pieza=None,
+    ):
 
         fecha = self.campo_fecha.date()
         fecha_bd = fecha.toString("yyyy/MM/dd")
@@ -707,19 +864,24 @@ class VentanaPrincipal(QWidget):
             )
             return
 
-        # ----------------------------------------------------------
-        # SÍ HAY RESULTADOS: avanzar a Selección de producto
-        # ----------------------------------------------------------
+        # --------------------------------------------------------------
+        # NOTA: tpo_pza / nombre_tipo_pieza / imagenes solo llegan con
+        # datos cuando la especie es RES. SeleccionDeProducto necesita
+        # aceptar estos kwargs (o ignorarlos) para que esto no rompa
+        # el flujo de las demás especies.
+        # --------------------------------------------------------------
 
         self.ventana_seleccion_producto = SeleccionDeProducto(
             usuario=self.usuario,
             fecha_produccion=fecha.toString("yyyy-MM-dd"),
             especie=nombre_especie,
             numEspecie= id_especie,
-            lotes=lotes,
+            tpo_pza=tpo_pza,
+            lotes=lotes
             
         )
-        print("ID:", id_especie)
+        print("ID:", id_especie)      
+        print("TIPO PIEZA:", tpo_pza)
         self.ventana_seleccion_producto.show()
         self.close()
 
@@ -747,14 +909,12 @@ class VentanaPrincipal(QWidget):
 
     def _obtener_nombre_especie(self):
 
-        boton = self.grupo_especies.checkedButton()
+        for boton in self.grupo_especies.buttons():
+            if boton.isChecked():
+                return boton.property("nombre_especie")
 
-        if boton is None:
-            return None
+        return None
 
-        return boton.property(
-            "nombre_especie"
-        )
 
     # ==============================================================
     # CARGAR LOTES

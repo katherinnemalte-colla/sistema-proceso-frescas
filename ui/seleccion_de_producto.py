@@ -7,7 +7,13 @@ Muestra los productos (con imagen) de la especie/lote actuales, navegables
 mediante un paginador alfabético (por la primera letra de p.nmbre_crto) y
 filtrables por N° PLU. Al elegir un producto se abre la Ficha Técnica.
 
-Capa: UI. No contiene SQL: todo el acceso a datos pasa por ImagenRepository.
+Para RES (vaca), en vez de filtrar por especie recibe tpo_pza (DELANTERO/
+TRASERO, elegido en VentanaPrincipal) y usa ObtenerTipoPzaRepository, que
+expone la misma interfaz que ImagenRepository. El resto de la pantalla no
+necesita saber cuál de los dos está usando.
+
+Capa: UI. No contiene SQL: todo el acceso a datos pasa por el repositorio
+correspondiente (ImagenRepository o ObtenerTipoPzaRepository).
 """
 
 import os
@@ -30,6 +36,7 @@ from PySide6.QtWidgets import (
 
 from utils.ventana_utils import aplicar_tamano
 from repositories.imagen_repository import ImagenRepository, TAMANO_PAGINA
+from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from ui.ficha_tecnica import FichaTecnica  # ajustar import según ubicación real
 
 
@@ -207,8 +214,18 @@ class ProductoWidget(QFrame):
     def _cargar_pixmap(datos_binarios):
         if not datos_binarios:
             return None
+
+        if not isinstance(datos_binarios, (bytes, bytearray, memoryview)):
+            #revisar el esquema
+            print(
+                "con_arch llegó con tipo inesperado:",
+                type(datos_binarios),
+                repr(datos_binarios)[:100],
+            )
+            return None
+
         pixmap = QPixmap()
-        if pixmap.loadFromData(QByteArray(datos_binarios)):
+        if pixmap.loadFromData(QByteArray(bytes(datos_binarios))):
             return pixmap
         return None
 
@@ -219,19 +236,41 @@ class ProductoWidget(QFrame):
 
 
 class SeleccionDeProducto(QWidget):
-    """
-    Pantalla de selección de producto para un lote/fecha/especie dados.
-    """
 
-    def __init__(self, usuario, lotes, fecha_produccion, especie, numEspecie, parent=None):
+  
+    def __init__(
+        self,
+        usuario,
+        lotes,
+        fecha_produccion,
+        especie,
+        numEspecie,
+        tpo_pza=None,
+        nombre_tipo_pieza=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.usuario = usuario
 
         self.fecha_produccion = fecha_produccion
         self.especie = especie
         self.numEspecie = numEspecie
+        self.tpo_pza = tpo_pza
+        self.nombre_tipo_pieza = nombre_tipo_pieza
 
-        self.repositorio = ImagenRepository(self._obtener_conexion)
+        # ------------------------------------------------------------
+        # REPOSITORIO: cuál usar depende de si viene tpo_pza (RES) o no.
+        # Ambos repositorios exponen los mismos métodos, así que el
+        # resto de esta clase llama siempre a self.repositorio y usa
+        # self._criterio_filtro, sin ramificar por especie.
+        # ------------------------------------------------------------
+
+        if self.tpo_pza is not None:
+            self.repositorio = ObtenerTipoPzaRepository(self._obtener_conexion)
+            self._criterio_filtro = self.tpo_pza
+        else:
+            self.repositorio = ImagenRepository(self._obtener_conexion)
+            self._criterio_filtro = self.numEspecie
 
         # Estado del paginador alfabético
         self._paginas_letras = []      # list[PaginaLetra]
@@ -317,7 +356,7 @@ class SeleccionDeProducto(QWidget):
         return cabecera
 
     # ------------------------------------------------------------------
-    # Tarjetas de información (LOTE / FECHA / ESPECIE)
+    # Tarjetas de información (LOTE / FECHA / ESPECIE / PIEZA)
     # ------------------------------------------------------------------
     def _crear_tarjetas_info(self):
         contenedor = QWidget()
@@ -335,6 +374,13 @@ class SeleccionDeProducto(QWidget):
         layout.addWidget(
             self._crear_tarjeta("ESPECIE", str(self.especie), "cow.png")
         )
+
+        # Solo aparece en el flujo RES, cuando sí hay tipo de pieza.
+        if self.tpo_pza is not None and self.nombre_tipo_pieza:
+            layout.addWidget(
+                self._crear_tarjeta("TIPO DE PIEZA", str(self.nombre_tipo_pieza), "box.png")
+            )
+
         return contenedor
 
     def _obtener_valor_lote(self):
@@ -565,7 +611,9 @@ class SeleccionDeProducto(QWidget):
     # Paginador alfabético — carga y navegación
     # ------------------------------------------------------------------
     def _cargar_paginador_alfabetico(self):
-        self._paginas_letras = self.repositorio.construir_paginas_letras(self.numEspecie)
+        self._paginas_letras = self.repositorio.construir_paginas_letras(
+            self._criterio_filtro
+        )
         self._indice_pagina_actual = 0
         self._indice_ventana = 0
 
@@ -653,7 +701,7 @@ class SeleccionDeProducto(QWidget):
     def _cargar_productos_de_pagina_actual(self):
         pagina = self._paginas_letras[self._indice_pagina_actual]
         productos = self.repositorio.obtener_productos_por_letra(
-            self.numEspecie, pagina.letra, pagina.offset, TAMANO_PAGINA
+            self._criterio_filtro, pagina.letra, pagina.offset, TAMANO_PAGINA
         )
         self._mostrar_productos(productos)
 
@@ -668,7 +716,9 @@ class SeleccionDeProducto(QWidget):
             return
 
         self._layout_paginador_visible(False)
-        productos = self.repositorio.buscar_productos_por_plu(self.numEspecie, texto)
+        productos = self.repositorio.buscar_productos_por_plu(
+            self._criterio_filtro, texto
+        )
         self._mostrar_productos(productos)
 
     def _layout_paginador_visible(self, visible):
@@ -729,6 +779,8 @@ class SeleccionDeProducto(QWidget):
             especie=self.especie,
             numEspecie=self.numEspecie,
             lote=self._obtener_valor_lote(),
+            tpo_pza=self.tpo_pza,
+            nombre_tipo_pieza=self.nombre_tipo_pieza,
         )
         self.ventana_ficha_tecnica.show()
         self.close()

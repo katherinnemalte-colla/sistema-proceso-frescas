@@ -400,6 +400,20 @@ class VentanaLogin(QDialog):
     # ==============================================================
 
     def intentar_login(self):
+        try:
+            usuario = auth_service.autenticar(
+                self.campo_usuario.text(),
+                self.campo_clave.text(),
+            )
+        except ConnectionError as e:
+            QMessageBox.warning(
+                self, "Error de conexión",
+                "No se pudo conectar al servidor.\nVerifique su conexión de red e intente nuevamente."
+            )
+            return
+        except Exception as e:
+            QMessageBox.critical(self, "Error inesperado", f"Ocurrió un error:\n{e}")
+            return
 
         if (
             not self.campo_usuario.text()
