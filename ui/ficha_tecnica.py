@@ -8,6 +8,8 @@ from PySide6.QtGui import QPixmap, QIcon
 from utils.ventana_utils import aplicar_tamano
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
+#from repositories.etiquetas.frescas_100x45 import DatosEtiquetaFrescas
+from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas
 
 ANCHO_CONTENIDO = 950
 
@@ -550,9 +552,18 @@ class FichaTecnica(QWidget):
     # ==============================================================
     # ACCIONES
     # ==============================================================
-
+       
     def _guardar_peso(self):
+        datos = construir_datos_etiqueta(
+            producto=self.producto_completo,        # o el objeto Producto que tengas
+            lote=self.lote,
+            fecha_produccion=self.fecha_produccion,
+            nombre_usuario=self.usuario,      # ajusta al atributo real de tu Usuario
+            tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
+        )
+        imprimir_etiqueta_frescas(datos, "ZDesigner ZD230-203dpi ZPL")
         # Placeholder: aquí se guardará el peso + fecha de vencimiento en la base de datos.
+        """
         datos = {
             "producto": self.producto.get("nombre"),
             "cdgo_plu": self.producto.get("cdgo_plu"),
@@ -561,7 +572,7 @@ class FichaTecnica(QWidget):
             "tipo_limpieza": self.tipo_limpieza_seleccionado,
         }
         print("Guardar peso:", datos)
-
+        """
     def _volver_a_seleccion_de_producto(self):
         from ui.seleccion_de_producto import SeleccionDeProducto
         from repositories.obtener_lote_fecha_repository import ObtenerLoteFechaRepository
