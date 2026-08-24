@@ -561,7 +561,7 @@ class FichaTecnica(QWidget):
             nombre_usuario=self.usuario,      # ajusta al atributo real de tu Usuario
             tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
         )
-        imprimir_etiqueta_frescas(datos, "ZDesigner ZD230-203dpi ZPL")
+        imprimir_etiqueta_frescas(datos, "Zebra Technologies ZTC GK420t")
         # Placeholder: aquí se guardará el peso + fecha de vencimiento en la base de datos.
         """
         datos = {
