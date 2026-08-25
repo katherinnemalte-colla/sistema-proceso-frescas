@@ -40,3 +40,12 @@ def obtener_nombre_empresa_bd() -> Optional[str]:
 
 def obtener_direccion_empresa_bd() -> Optional[str]:
     return _consultar_valor_basicas(eleme_grup="DIRECCION")
+
+def obtener_telefono_empresa_db() -> Optional[str]:
+    return _consultar_valor_basicas(eleme_grup="TELEFONO")
+
+def obtener_ciudad_empresa_db() -> Optional[str]:
+    return _consultar_valor_basicas(eleme_grup="CIUDAD")
+
+def obtener_fabricado_empresa_db() -> Optional[str]:
+    return _consultar_valor_basicas(nombr_grup="ETIQUETA_CABECERA",eleme_grup="ETIQUETA_EMPRESA")

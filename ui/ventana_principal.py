@@ -880,8 +880,6 @@ class VentanaPrincipal(QWidget):
             lotes=lotes
             
         )
-        print("ID:", id_especie)      
-        print("TIPO PIEZA:", tpo_pza)
         self.ventana_seleccion_producto.show()
         self.close()
 

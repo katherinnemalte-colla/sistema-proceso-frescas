@@ -1,17 +1,10 @@
 from PySide6.QtWidgets import QApplication, QDialog
-#from controllers.etiquetas_controller import EtiquetasController
 import sys
 from ui.ventana_login import VentanaLogin
 from ui.ventana_principal import VentanaPrincipal
 from ui.ventana_fondo import VentanaFondo
 from models.usuarios import Usuario
 
-#app = QApplication(sys.argv)
-
-#controller = EtiquetasController()
-#controller.mostrar()
-
-#sys.exit(app.exec())
 class ControladorApp:
     """
     Mantiene referencias vivas a las ventanas.
@@ -41,7 +34,7 @@ class ControladorApp:
     def abrir_ventana_principal(self, usuario: Usuario):
         self.ventana_fondo.close()
         #self.ventana_login.close()
-        self.ventana_principal = VentanaPrincipal(usuario)
+        self.ventana_principal = VentanaPrincipal(usuario.nombre_usuario)
         self.ventana_principal.show()
  
  

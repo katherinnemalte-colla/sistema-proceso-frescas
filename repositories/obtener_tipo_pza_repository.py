@@ -78,52 +78,58 @@ class ObtenerTipoPzaRepository:
     def __init__(self, obtener_conexion):
         self._obtener_conexion = obtener_conexion
 
-    # ------------------------------------------------------------
-    # LETRAS DISPONIBLES
-    # ------------------------------------------------------------
     def obtener_letras_disponibles(self, tpo_pza: int) -> List[str]:
-
+        # Mismo criterio de inclusión que obtener_productos_por_letra
+        # (INNER JOIN con imagenes) para que una letra "disponible" siempre
+        # tenga al menos un producto recuperable. Además se descartan
+        # nombres vacíos/nulos para que no aparezca una letra en blanco.
         consulta = f"""
             SELECT DISTINCT LEFT(p.nmbre_crto, 1) AS letra
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
+            INNER JOIN [{DB_IMAGENES}].dbo.imagenes img
+                ON img.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
             WHERE a.tpo_pza = ?
-              AND p.cntro_prcso = 1
+            AND p.cntro_prcso = 1
+            AND LTRIM(RTRIM(ISNULL(p.nmbre_crto, ''))) <> ''
             ORDER BY letra
         """
-
         with self._obtener_conexion() as conexion:
             cursor = conexion.cursor()
             cursor.execute(consulta, (tpo_pza,))
-            return [fila[0] for fila in cursor.fetchall() if fila[0]]
+            return [fila[0] for fila in cursor.fetchall()]
 
-    # ------------------------------------------------------------
-    # CONTAR PRODUCTOS POR LETRA (para saber cuántas páginas hay)
-    # ------------------------------------------------------------
+
     def contar_productos_por_letra(self, tpo_pza: int, letra: str) -> int:
-
+        # OJO: debe llevar el MISMO INNER JOIN con imagenes que
+        # obtener_productos_por_letra. Si aquí cuentas sin ese join,
+        # el total queda inflado respecto a lo que la consulta paginada
+        # realmente puede traer, y eso es lo que te da "no se encontraron
+        # productos" al entrar (offset 0 calculado sobre un total que no
+        # coincide con las filas reales disponibles).
         consulta = f"""
             SELECT COUNT(*)
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
+            INNER JOIN [{DB_IMAGENES}].dbo.imagenes img
+                ON img.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
             WHERE a.tpo_pza = ?
-              AND p.cntro_prcso = 1
-              AND LEFT(p.nmbre_crto, 1) = ?
+            AND p.cntro_prcso = 1
+            AND LEFT(p.nmbre_crto, 1) = ?
         """
-
         with self._obtener_conexion() as conexion:
             cursor = conexion.cursor()
             cursor.execute(consulta, (tpo_pza, letra))
-            fila = cursor.fetchone()
-            return int(fila[0]) if fila else 0
+            return cursor.fetchone()[0]
 
-    # ------------------------------------------------------------
-    # CONSTRUIR PÁGINAS DE LETRAS (una o más páginas de 12 por letra)
-    # ------------------------------------------------------------
+
     def construir_paginas_letras(self, tpo_pza: int) -> List[PaginaLetra]:
-
+        # Se mantiene la lógica de "chunks" por letra (necesaria si una
+        # letra tiene más productos que TAMANO_PAGINA), pero ahora el total
+        # que usa para calcular los offsets es consistente con lo que
+        # obtener_productos_por_letra puede traer realmente.
         letras = self.obtener_letras_disponibles(tpo_pza)
         paginas: List[PaginaLetra] = []
 

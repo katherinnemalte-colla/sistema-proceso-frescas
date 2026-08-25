@@ -1,35 +1,32 @@
 import random
+import os
+import socket
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
-
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QFont
-
+from PySide6.QtWidgets import QLabel
+from PySide6.QtGui import QFont, QFontDatabase
+from repositories.empresa_repository import(
+    obtener_fabricado_empresa_db,
+    obtener_telefono_empresa_db,
+    obtener_ciudad_empresa_db)
 from .motor_impresion import (
     crear_impresora,
     crear_painter,
     dibujar_qr,
 )
-
+from pathlib import Path
 # --------------------------------------------------------------------
 # TAMAÑO FÍSICO DE LA ETIQUETA (mm)
 # --------------------------------------------------------------------
 ANCHO_MM = 100
 ALTO_MM = 45
 
-
-# ======================================================================
-# ⚠️ CONSTANTES QUEMADAS — sin fuente confirmada todavía
-# ======================================================================
-
-# fabricante: en el JSON viene fijo (no ligado a ninguna tabla que me
-# hayas mostrado). Si más adelante hay una tabla de "sede"/"planta",
-# se reemplaza esto por una consulta.
 FABRICANTE_NOMBRE = "UNA EMPRESA SAS"
 FABRICANTE_DIRECCION = "Cra. 126A #17-90 Int. 10"
 FABRICANTE_CIUDAD = "Bogotá"
-FABRICANTE_PAIS = "COL"
+#FABRICANTE_PAIS = "COL"
 FABRICANTE_TELEFONO = "601-4187884"
 
 # conservación: valores estándar del rótulo, no dependen del producto.
@@ -38,24 +35,26 @@ TEMPERATURA_MAXIMA_C = 4
 RECOMENDACION_CONSERVACION = "Mantengase Refrigerado entre 0°C y 4°C"
 RECOMENDACION_USO = "consumase bien cocido a temperatura superior de 70°C"
 
-# categoría: el JSON la trae fija en "PREMIUM". Si en el futuro depende
-# del producto/tipo de pieza, se vuelve parámetro en vez de constante.
 CATEGORIA_DEFAULT = "PREMIUM"
 
-CODIGO_PROCESO_DEFAULT = "produccion-p307"
+
+NOMBRE_MARCA_DEFAULT = "Cialta"
+
+#NOMBRE_MARCA_DEFAULT = "Cialta"
+CODIGO_PROCESO_DEFAULT = socket.gethostname()
 
 
-def obtener_nombre_empresa(id_empresa=None) -> str:
-    """
-    ⚠️ QUEMADO por ahora.
+# Al inicio del archivo o fuera de cualquier clase (columna 0):
+def obtener_nombre_empresa() -> str:
+    raiz_proyecto = Path(__file__).resolve().parent.parent.parent
+    ruta_fuente = raiz_proyecto / "assets" / "icons" / "fuentes" / "OPTITimesRoman-Italic.otf"
 
-    La tabla `emprsas` tiene múltiples registros (multi-empresa/sede),
-    así que antes de armar un ObtenerEmpresaRepository real hace falta
-    definir CUÁL empresa aplica para este lote/usuario (¿por planta?
-    ¿por usuario logueado? ¿parámetro de configuración?). Mientras
-    tanto, devuelve un nombre fijo.
-    """
-    return "UNA EMPRESA SAS"
+    font_id = QFontDatabase.addApplicationFont(str(ruta_fuente))
+
+
+    return NOMBRE_MARCA_DEFAULT
+
+
 
 
 def obtener_peso_neto(peso_bascula: Optional[float] = None) -> float:
@@ -121,7 +120,7 @@ class DatosEtiquetaFrescas:
     fabricante_nombre: str
     fabricante_direccion: str
     fabricante_ciudad: str
-    fabricante_pais: str
+    #fabricante_pais: str
     fabricante_telefono: str
 
     # conservación
@@ -156,7 +155,12 @@ def construir_datos_etiqueta(
     seleccionado, usuario) con los valores quemados de arriba.
     """
 
-    descripcion = f"{producto.cdgo_plu} {producto.nom_prog}".strip()
+    # ⚠️ CAMBIO vs versión original: en la etiqueta real el PLU y el
+    # nombre van pegados con un guion ("5-CADERA DE RES -SOLOMO...")
+    # y no con un espacio. Confirma que nom_prog no traiga ya el guion
+    # incluido, para no duplicarlo.
+ 
+    descripcion = f"{producto.cdgo_plu}-{producto.nom_prog}".strip()
 
     contenido_qr = _generar_contenido_qr(
         id_registro=producto.cdgo_plu,
@@ -175,11 +179,11 @@ def construir_datos_etiqueta(
         fecha_sacrificio=fecha_sacrificio,
         fecha_vencimiento_refrigeracion=fecha_vencimiento_refrigeracion,
 
-        fabricante_nombre=FABRICANTE_NOMBRE,
+        fabricante_nombre=obtener_fabricado_empresa_db(),
         fabricante_direccion=FABRICANTE_DIRECCION,
-        fabricante_ciudad=FABRICANTE_CIUDAD,
-        fabricante_pais=FABRICANTE_PAIS,
-        fabricante_telefono=FABRICANTE_TELEFONO,
+        fabricante_ciudad=obtener_ciudad_empresa_db(),
+        #fabricante_pais=FABRICANTE_PAIS,
+        fabricante_telefono=obtener_telefono_empresa_db(),
 
         temperatura_minima_c=TEMPERATURA_MINIMA_C,
         temperatura_maxima_c=TEMPERATURA_MAXIMA_C,
@@ -199,10 +203,6 @@ def construir_datos_etiqueta(
 
 
 # ======================================================================
-# DIBUJO / IMPRESIÓN
-# ======================================================================
-
-# ======================================================================
 # DIBUJO / IMPRESIÓN (SISTEMA DE COORDENADAS LOGICAS 1000x450)
 # ======================================================================
 
@@ -217,18 +217,8 @@ def imprimir_etiqueta_frescas(
     )
 
     painter = crear_painter(impresora)
-    # ================================================================
-    # LIENZO
-    # ================================================================
-    # Se conserva la orientación que ya utilizaba tu impresión:
-    # etiqueta física de 100 x 45 mm.
-    #
-    # Trabajamos con coordenadas lógicas 1000 x 450 para tener
-    # suficiente control sobre la distribución.
-    # ================================================================
 
     painter.setWindow(0, 0, 450, 1000)
-
     painter.translate(450, 0)
     painter.rotate(90)
 
@@ -239,337 +229,168 @@ def imprimir_etiqueta_frescas(
     ANCHO = 1000
     ALTO = 450
 
-    MARGEN = 30
-
-    # QR más pequeños para liberar espacio para el texto
-    QR_SIZE = 225
-
-    # Separación entre QR y contenido
-    SEPARACION_QR = 15
+    MARGEN = 39
+    QR_SIZE = 169
+    SEPARACION_QR = 18
+    GROSOR_LINEA = 5
 
     # ================================================================
-    # ÁREA DE LOS QR
+    # DOS ZONAS DE TEXTO:
+    #
+    # - Zona COMPLETA (margen a margen): todo lo que va ARRIBA de la
+    #   línea divisoria (descripción, fechas, fabricante, dirección,
+    #   conservación). En la etiqueta real este bloque ocupa todo el
+    #   ancho, no solo el espacio entre los dos QR.
+    # - Zona ANGOSTA (entre los dos QR): solo la fila de abajo
+    #   (marca + categoría + código), que sí debe quedar centrada
+    #   entre los QR.
     # ================================================================
 
-    qr_y = ALTO - QR_SIZE - 20
+    x_full = MARGEN
+    ancho_full = ANCHO - (MARGEN * 2)
 
-    if datos.qr_izquierda:
-        dibujar_qr(
-            painter,
-            datos.qr_izquierda,
-            QRectF(
-                MARGEN,
-                qr_y,
-                QR_SIZE,
-                QR_SIZE
-            )
-        )
-
-    if datos.qr_derecha:
-        x_qr_derecha = ANCHO - MARGEN - QR_SIZE
-
-        dibujar_qr(
-            painter,
-            datos.qr_derecha,
-            QRectF(
-                x_qr_derecha,
-                qr_y,
-                QR_SIZE,
-                QR_SIZE
-            )
-        )
-
-    # ================================================================
-    # ÁREA CENTRAL DEL TEXTO
-    # ================================================================
-
-    x_texto = (
-        MARGEN +
-        (QR_SIZE + SEPARACION_QR if datos.qr_izquierda else 0)
-    )
-
-    x_final = (
-        ANCHO -
-        MARGEN -
-        (QR_SIZE + SEPARACION_QR if datos.qr_derecha else 0)
-    )
-
-    ancho_texto = x_final - x_texto
+    x_entre_qr = MARGEN + QR_SIZE + SEPARACION_QR
+    ancho_entre_qr = ANCHO - (2 * (MARGEN + QR_SIZE + SEPARACION_QR))
 
     # ================================================================
     # FUNCIONES AUXILIARES
     # ================================================================
 
     def fuente(tamano, negrita=False):
-        """
-        Fuente controlada por píxeles para evitar que la impresora
-        escale exageradamente el texto.
-        """
         font = QFont("Arial")
-
-        if negrita:
-            font.setWeight(QFont.Weight.Bold)
-        else:
-            font.setWeight(QFont.Weight.Normal)
-
+        font.setWeight(QFont.Weight.Bold if negrita else QFont.Weight.Normal)
         font.setPixelSize(tamano)
-
         return font
 
-    def texto(
-        y,
-        alto,
-        contenido,
-        tamano=18,
-        negrita=False,
-        alineacion=Qt.AlignmentFlag.AlignLeft
-    ):
-        """
-        Dibuja una línea de texto dentro de un rectángulo controlado.
-        """
+    def texto(x, y, ancho, alto, contenido, tamano=20, negrita=False,
+              alineacion=Qt.AlignmentFlag.AlignLeft):
         painter.setFont(fuente(tamano, negrita))
+        painter.drawText(QRectF(x, y, ancho, alto), alineacion, str(contenido))
 
-        painter.drawText(
-            QRectF(
-                x_texto,
-                y,
-                ancho_texto,
-                alto
-            ),
-            alineacion,
-            str(contenido)
+    def fila_dos_columnas(y, alto, izquierda, derecha, tamano=25,
+                           negrita_izq=False, negrita_der=False, prop_izq=0.5):
+        """
+        Dibuja una fila con un texto a la izquierda y otro a la derecha,
+        repartiendo el ancho completo — evita repetir el mismo cálculo
+        de columnas en cada fila de dos textos.
+        """
+        ancho_izq = ancho_full * prop_izq
+        texto(x_full, y, ancho_izq, alto, izquierda, tamano=tamano, negrita=negrita_izq)
+        texto(
+            x_full + ancho_izq, y, ancho_full - ancho_izq, alto, derecha,
+            tamano=tamano, negrita=negrita_der,
+            alineacion=Qt.AlignmentFlag.AlignRight
         )
 
     # ================================================================
-    # POSICIÓN INICIAL
+    # ÁREA DE LOS QR (se dibujan primero, quedan fijos en las esquinas)
     # ================================================================
 
-    y = 22
+    qr_y = ALTO - QR_SIZE - 20
+
+    if datos.qr_izquierda:
+        dibujar_qr(painter, datos.qr_izquierda, QRectF(MARGEN, qr_y, QR_SIZE, QR_SIZE))
+
+    if datos.qr_derecha:
+        x_qr_derecha = ANCHO - MARGEN - QR_SIZE
+        dibujar_qr(painter, datos.qr_derecha, QRectF(x_qr_derecha, qr_y, QR_SIZE, QR_SIZE))
 
     # ================================================================
-    # PRODUCTO
+    # FILA 1 — DESCRIPCIÓN DEL PRODUCTO (ancho completo, izquierda)
     # ================================================================
 
-    # Primera línea: PLU + nombre del producto
-    texto(
-        y,
-        32,
-        datos.descripcion,
-        tamano=22,
-        negrita=True,
-        alineacion=Qt.AlignmentFlag.AlignCenter
-    )
+    y = 18
+
+    texto(x_full, y, ancho_full, 32, datos.descripcion, tamano=24, negrita=True)
 
     y += 38
 
     # ================================================================
-    # PESO + LOTE
+    # FILA 2 — Fecha Fabricación (izq.)  |  Peso / Lote / Nivel (der.)
     # ================================================================
 
-    # Peso
-    painter.setFont(fuente(19, True))
-
-    painter.drawText(
-        QRectF(
-            x_texto,
-            y,
-            ancho_texto / 2,
-            30
-        ),
-        Qt.AlignmentFlag.AlignLeft,
-        f"Peso: {datos.peso_neto_kg:.3f} kg"
+    nivel_texto = f"   Nv:{datos.nivel_limpieza}" if datos.nivel_limpieza is not None else ""
+    fila_dos_columnas(
+        y, 28,
+        f"Fecha Fabricacion: {datos.fecha_fabricacion}",
+        f"Peso Neto:{datos.peso_neto_kg:.2f}kg   Lote:{datos.lote}{nivel_texto}",
+        tamano=25, negrita_der=True, prop_izq=0.42
     )
 
-    # Lote
-    painter.setFont(fuente(17, True))
-
-    nivel_texto = ""
-
-    if datos.nivel_limpieza is not None:
-        nivel_texto = f"  |  Nivel: {datos.nivel_limpieza}"
-
-    painter.drawText(
-        QRectF(
-            x_texto + ancho_texto / 2,
-            y,
-            ancho_texto / 2,
-            30
-        ),
-        Qt.AlignmentFlag.AlignRight,
-        f"Lote: {datos.lote}{nivel_texto}"
-    )
-
-    y += 35
+    y += 30
 
     # ================================================================
-    # LÍNEA DIVISORIA
+    # FILA 3 — Fecha Sacrificio (izq.)  |  F.Vto. Refrigeración (der.)
     # ================================================================
 
-    painter.drawLine(
-        int(x_texto),
-        int(y),
-        int(x_texto + ancho_texto),
-        int(y)
+    fila_dos_columnas(
+        y, 28,
+        f"Fecha Sacrificio: {datos.fecha_sacrificio}",
+        f"F.Vto. Refrigeracion: {datos.fecha_vencimiento_refrigeracion}",
+        tamano=25
     )
 
-    y += 12
+    y += 36
 
     # ================================================================
-    # FECHAS
+    # FABRICANTE (ancho completo, izquierda)
     # ================================================================
 
-    # Fabricación
-    painter.setFont(fuente(14, False))
+    texto(x_full, y, ancho_full, 26, f" {datos.fabricante_nombre}",
+          tamano=20, negrita=True)
 
-    painter.drawText(
-        QRectF(
-            x_texto,
-            y,
-            ancho_texto / 3,
-            25
-        ),
-        Qt.AlignmentFlag.AlignLeft,
-        f"Fabricación: {datos.fecha_fabricacion}"
-    )
+    y += 26
 
-    # Sacrificio
-    painter.drawText(
-        QRectF(
-            x_texto + ancho_texto / 3,
-            y,
-            ancho_texto / 3,
-            25
-        ),
-        Qt.AlignmentFlag.AlignCenter,
-        f"Sacrificio: {datos.fecha_sacrificio}"
-    )
-
-    # Vencimiento
-    painter.drawText(
-        QRectF(
-            x_texto + (ancho_texto * 2 / 3),
-            y,
-            ancho_texto / 3,
-            25
-        ),
-        Qt.AlignmentFlag.AlignRight,
-        f"Vence: {datos.fecha_vencimiento_refrigeracion}"
-    )
-
-    y += 32
-
-    # ================================================================
-    # FABRICANTE
-    # ================================================================
-
-    painter.setFont(fuente(13, True))
-
-    painter.drawText(
-        QRectF(
-            x_texto,
-            y,
-            ancho_texto,
-            22
-        ),
-        Qt.AlignmentFlag.AlignCenter,
-        datos.fabricante_nombre
-    )
-
-    y += 21
-
-    painter.setFont(fuente(11))
-
+    # ⚠️ En la foto de la etiqueta real el teléfono aparece DOS veces
+    # (antes y después de la ciudad). Se deja una sola vez aquí porque
+    # todo indica que es un error de la plantilla original; avísame si
+    # en realidad debe repetirse.
     direccion = (
-        f"{datos.fabricante_direccion}  |  "
-        f"{datos.fabricante_ciudad}, {datos.fabricante_pais}  |  "
-        f"Tel: {datos.fabricante_telefono}"
+        f"{datos.fabricante_direccion} Tel.{datos.fabricante_telefono} "
+        f"{datos.fabricante_ciudad}, {datos.fabricante_telefono}"
     )
+    texto(x_full, y, ancho_full, 22, direccion, tamano=20)
 
-    painter.drawText(
-        QRectF(
-            x_texto,
-            y,
-            ancho_texto,
-            20
-        ),
-        Qt.AlignmentFlag.AlignCenter,
-        direccion
-    )
-
-    y += 27
+    y += 26
 
     # ================================================================
-    # CONSERVACIÓN
+    # CONSERVACIÓN + RECOMENDACIÓN DE USO (ancho completo, izquierda)
     # ================================================================
 
-    painter.setFont(fuente(12, True))
-
-    painter.drawText(
-        QRectF(
-            x_texto,
-            y,
-            ancho_texto,
-            22
-        ),
-        Qt.AlignmentFlag.AlignCenter,
-        datos.recomendacion_conservacion
-    )
-
+    texto(x_full, y, ancho_full, 22, datos.recomendacion_conservacion, tamano=20)
     y += 22
 
-    # ================================================================
-    # RECOMENDACIÓN DE USO
-    # ================================================================
-
-    painter.setFont(fuente(10))
-
-    painter.drawText(
-        QRectF(
-            x_texto,
-            y,
-            ancho_texto,
-            20
-        ),
-        Qt.AlignmentFlag.AlignCenter,
-        datos.recomendacion_uso
-    )
-
-    y += 27
-
-    # ================================================================
-    # MARCA + CATEGORÍA
-    # ================================================================
-
-    painter.setFont(fuente(16, True))
-
-    painter.drawText(
-        QRectF(
-            x_texto,
-            y,
-            ancho_texto,
-            25
-        ),
-        Qt.AlignmentFlag.AlignCenter,
-        f"{datos.marca}  |  {datos.categoria}"
-    )
-
+    texto(x_full, y, ancho_full, 22, f"Recomendación de Uso: {datos.recomendacion_uso}",
+          tamano=20)
     y += 28
 
     # ================================================================
-    # CÓDIGO DE TRAZABILIDAD
+    # LÍNEA DIVISORIA — ancho completo (margen a margen), más gruesa,
+    # justo antes del bloque de QRs
     # ================================================================
 
-    painter.setFont(fuente(9))
+    pluma = painter.pen()
+    pluma.setWidth(GROSOR_LINEA)
+    painter.setPen(pluma)
+    painter.drawLine(int(x_full), int(y), int(x_full + ancho_full), int(y))
+    painter.setPen(Qt.GlobalColor.black)  # se restaura para el texto que sigue
+    y += 12
 
-    painter.drawText(
-        QRectF(
-            x_texto,
-            y,
-            ancho_texto,
-            18
-        ),
-        Qt.AlignmentFlag.AlignCenter,
-        datos.codigo
-    )
+    # ================================================================
+    # BLOQUE ENTRE LOS DOS QR: MARCA + CATEGORÍA + CÓDIGO
+    # (esta parte sí va centrada, solo en el espacio entre los QR)
+    # ================================================================
+
+    alto_bloque_marca = ALTO - y - 20
+    y_marca = y + (alto_bloque_marca * 0.30)
+
+    texto(x_entre_qr, y_marca, ancho_entre_qr, 40, datos.marca,
+          tamano=42, negrita=True, alineacion=Qt.AlignmentFlag.AlignCenter)
+
+    texto(x_entre_qr, y_marca + 42, ancho_entre_qr, 32, datos.categoria,
+          tamano=26, negrita=True, alineacion=Qt.AlignmentFlag.AlignCenter)
+
+    texto(x_entre_qr, y_marca + 80, ancho_entre_qr, 20, datos.codigo,
+          tamano=17, alineacion=Qt.AlignmentFlag.AlignCenter)
 
     painter.end()

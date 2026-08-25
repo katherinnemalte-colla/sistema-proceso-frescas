@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QSize, QDate
 from PySide6.QtGui import QPixmap, QIcon
-
+from types import SimpleNamespace
 from utils.ventana_utils import aplicar_tamano
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
@@ -552,16 +552,34 @@ class FichaTecnica(QWidget):
     # ==============================================================
     # ACCIONES
     # ==============================================================
-       
     def _guardar_peso(self):
+        producto_para_etiqueta = self.producto_completo or SimpleNamespace(
+            cdgo_plu=self.producto.get("cdgo_plu"),
+            nom_prog=self.producto.get("nom_prog", self.producto.get("nombre", "")),
+        )
+
         datos = construir_datos_etiqueta(
+            producto=producto_para_etiqueta,
+            lote=self.lote,
+            fecha_produccion=self.fecha_produccion,
+            nombre_usuario=self.usuario,
+            tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
+    )
+        """
+    def _guardar_peso(self):
+
+        datos = construir_datos_etiqueta(
+            #cdgo_plu=11
             producto=self.producto_completo,        # o el objeto Producto que tengas
             lote=self.lote,
             fecha_produccion=self.fecha_produccion,
             nombre_usuario=self.usuario,      # ajusta al atributo real de tu Usuario
-            tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
+            #tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
         )
-        imprimir_etiqueta_frescas(datos, "Zebra Technologies ZTC GK420t")
+        #print(f"el nombre del usuario{self.producto}" )
+        #print(f"el nombre del usuario{self.producto_completo}" )
+        """
+        imprimir_etiqueta_frescas(datos, "ZDesigner GK420t (Copiar 1)")
         # Placeholder: aquí se guardará el peso + fecha de vencimiento en la base de datos.
         """
         datos = {
