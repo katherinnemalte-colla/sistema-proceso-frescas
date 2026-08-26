@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 from utils.ventana_utils import aplicar_tamano
 from repositories.imagen_repository import ImagenRepository, TAMANO_PAGINA
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
-from ui.ficha_tecnica import FichaTecnica  # ajustar import según ubicación real
+from ui.ficha_tecnica import FichaTecnica
 
 
 # Cuántos botones de letra se muestran a la vez en el paginador.

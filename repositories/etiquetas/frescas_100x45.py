@@ -1,16 +1,20 @@
 import random
 import os
+from dataclasses import dataclass
+from typing import List, Optional
+from datetime import date
 import socket
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtWidgets import QLabel
 from PySide6.QtGui import QFont, QFontDatabase
+from models.database import obtener_conexion  # el helper que uses para conectar
 from repositories.empresa_repository import(
     obtener_fabricado_empresa_db,
     obtener_telefono_empresa_db,
     obtener_ciudad_empresa_db)
+from repositories.obtener_tipo_limpieza_repository import(ObtenerTipoLimpiezaRepository)
 from .motor_impresion import (
     crear_impresora,
     crear_painter,
@@ -23,7 +27,6 @@ from pathlib import Path
 ANCHO_MM = 100
 ALTO_MM = 45
 
-FABRICANTE_NOMBRE = "UNA EMPRESA SAS"
 FABRICANTE_DIRECCION = "Cra. 126A #17-90 Int. 10"
 FABRICANTE_CIUDAD = "Bogotá"
 #FABRICANTE_PAIS = "COL"
@@ -35,10 +38,6 @@ TEMPERATURA_MAXIMA_C = 4
 RECOMENDACION_CONSERVACION = "Mantengase Refrigerado entre 0°C y 4°C"
 RECOMENDACION_USO = "consumase bien cocido a temperatura superior de 70°C"
 
-CATEGORIA_DEFAULT = "PREMIUM"
-
-
-NOMBRE_MARCA_DEFAULT = "Cialta"
 
 #NOMBRE_MARCA_DEFAULT = "Cialta"
 CODIGO_PROCESO_DEFAULT = socket.gethostname()
@@ -52,9 +51,7 @@ def obtener_nombre_empresa() -> str:
     font_id = QFontDatabase.addApplicationFont(str(ruta_fuente))
 
 
-    return NOMBRE_MARCA_DEFAULT
-
-
+    return font_id
 
 
 def obtener_peso_neto(peso_bascula: Optional[float] = None) -> float:
@@ -79,8 +76,9 @@ def construir_codigo(nombre_usuario: str, numero_ticket: Optional[int] = None) -
 
 
 def _generar_contenido_qr(
-    id_registro,
     lote,
+    nivel_limpieza,
+    #cdgo_plu=cdgo_plu
     otros_numeros: str = "",
     fecha: Optional[datetime] = None,
 ) -> str:
@@ -90,11 +88,11 @@ def _generar_contenido_qr(
     ⚠️ "otros_numeros" queda vacío hasta que definas qué representan.
     """
     fecha = fecha or datetime.now()
-    partes = [str(id_registro), str(lote)]
+    partes = [str(lote),nivel_limpieza]
     if otros_numeros:
         partes.append(str(otros_numeros))
     partes.append(fecha.strftime("%d%m%Y"))
-    return "-".join(partes)
+    return partes
 
 
 # ======================================================================
@@ -113,7 +111,8 @@ class DatosEtiquetaFrescas:
 
     # fechas
     fecha_fabricacion: str
-    fecha_sacrificio: str
+    fecha_sacrificio: Optional[date]
+    nom_impr_etiq: str         
     fecha_vencimiento_refrigeracion: str
 
     # fabricante
@@ -138,6 +137,8 @@ class DatosEtiquetaFrescas:
     qr_derecha: Optional[str]
 
 
+    
+
 def construir_datos_etiqueta(
     producto,                       # objeto con .cdgo_plu / .nom_prog (Producto o ProductoConImagenes)
     lote: str,
@@ -146,7 +147,8 @@ def construir_datos_etiqueta(
     tipo_limpieza_seleccionado: Optional[int] = None,
     peso_bascula: Optional[float] = None,
     numero_ticket: Optional[int] = None,
-    fecha_sacrificio: str = "24/06/2026",                # ⚠️ QUEMADO
+    fecha_sacrificio: Optional[str] = None,                # ⚠️ QUEMADO
+    nom_impr_etiq: Optional[str] = None,
     fecha_vencimiento_refrigeracion: str = "19/08/2026",  # ⚠️ QUEMADO
 ) -> DatosEtiquetaFrescas:
     """
@@ -163,10 +165,20 @@ def construir_datos_etiqueta(
     descripcion = f"{producto.cdgo_plu}-{producto.nom_prog}".strip()
 
     contenido_qr = _generar_contenido_qr(
-        id_registro=producto.cdgo_plu,
+        #id_registro=producto.cdgo_plu,
         lote=lote,
+        nivel_limpieza=tipo_limpieza_seleccionado,
     )
+    repo_limpieza = ObtenerTipoLimpiezaRepository(obtener_conexion)
+    resultado_sacrificio = repo_limpieza.obtener_fecha_sacrificio(int(lote))
 
+    fecha_sacrificio_str = (
+        resultado_sacrificio.scrfcio.strftime("%d/%m/%Y")
+        if resultado_sacrificio and resultado_sacrificio.scrfcio
+        else ""
+    )
+    nom_impr_etiq_valor = resultado_sacrificio.nom_impr_etiq if resultado_sacrificio else ""
+    
     return DatosEtiquetaFrescas(
         cdgo_plu=str(producto.cdgo_plu),
         nom_prog=producto.nom_prog,
@@ -176,7 +188,8 @@ def construir_datos_etiqueta(
         peso_neto_kg=obtener_peso_neto(peso_bascula),
 
         fecha_fabricacion=fecha_produccion,  # este sí viene de datos reales
-        fecha_sacrificio=fecha_sacrificio,
+        fecha_sacrificio= fecha_sacrificio_str or "",
+        nom_impr_etiq=nom_impr_etiq or "",
         fecha_vencimiento_refrigeracion=fecha_vencimiento_refrigeracion,
 
         fabricante_nombre=obtener_fabricado_empresa_db(),
@@ -191,7 +204,7 @@ def construir_datos_etiqueta(
         recomendacion_uso=RECOMENDACION_USO,
 
         marca=obtener_nombre_empresa(),
-        categoria=CATEGORIA_DEFAULT,
+        categoria=nom_impr_etiq_valor or "",
         codigo=construir_codigo(nombre_usuario, numero_ticket),
 
         # Mismo contenido en ambos por ahora — si cada QR debe llevar
@@ -312,7 +325,7 @@ def imprimir_etiqueta_frescas(
     nivel_texto = f"   Nv:{datos.nivel_limpieza}" if datos.nivel_limpieza is not None else ""
     fila_dos_columnas(
         y, 28,
-        f"Fecha Fabricacion: {datos.fecha_fabricacion}",
+        f"Fecha Empaque: {datos.fecha_fabricacion}",
         f"Peso Neto:{datos.peso_neto_kg:.2f}kg   Lote:{datos.lote}{nivel_texto}",
         tamano=25, negrita_der=True, prop_izq=0.42
     )
@@ -325,7 +338,7 @@ def imprimir_etiqueta_frescas(
 
     fila_dos_columnas(
         y, 28,
-        f"Fecha Sacrificio: {datos.fecha_sacrificio}",
+        f"Fecha Beneficio: {datos.fecha_sacrificio}",
         f"F.Vto. Refrigeracion: {datos.fecha_vencimiento_refrigeracion}",
         tamano=25
     )

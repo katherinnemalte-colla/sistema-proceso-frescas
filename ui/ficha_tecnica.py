@@ -25,6 +25,8 @@ class FichaTecnica(QWidget):
         lote: str,
         tpo_pza=None,
         nombre_tipo_pieza=None,
+        fecha_sacrificio=None,
+        nom_impr_etiq = None,
     ):
         super().__init__()
         self.usuario = usuario
@@ -38,7 +40,8 @@ class FichaTecnica(QWidget):
 
         self.seleccion_de_producto = None
         self.peso_actual = 0.000  # placeholder: aquí se conectará la báscula real
-
+        self.fecha_sacrificio = fecha_sacrificio
+        self.nom_impr_etiq  = nom_impr_etiq
         # ------------------------------------------------------------
         # LAS 6 IMÁGENES: solo se consultan cuando viene de RES
         # (tpo_pza no es None). El diccionario "producto" que llega de
@@ -564,6 +567,8 @@ class FichaTecnica(QWidget):
             fecha_produccion=self.fecha_produccion,
             nombre_usuario=self.usuario,
             tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
+            fecha_sacrificio=self.fecha_sacrificio,
+            nom_impr_etiq = self.nom_impr_etiq,
     )
         """
     def _guardar_peso(self):
