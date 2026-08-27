@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import date
 import socket
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtWidgets import QLabel
 from PySide6.QtGui import QFont, QFontDatabase
@@ -42,6 +42,13 @@ RECOMENDACION_USO = "consumase bien cocido a temperatura superior de 70°C"
 #NOMBRE_MARCA_DEFAULT = "Cialta"
 CODIGO_PROCESO_DEFAULT = socket.gethostname()
 
+def calcular_fecha_vencimiento(
+    fecha_fabricacion: datetime,
+    dia_refr: Optional[int],
+) -> Optional[datetime]:
+    if dia_refr is None:
+        return None
+    return fecha_fabricacion + timedelta(days=dia_refr)
 
 # Al inicio del archivo o fuera de cualquier clase (columna 0):
 def obtener_nombre_empresa() -> str:
@@ -78,22 +85,16 @@ def construir_codigo(nombre_usuario: str, numero_ticket: Optional[int] = None) -
 def _generar_contenido_qr(
     lote,
     nivel_limpieza,
-    #cdgo_plu=cdgo_plu
-    otros_numeros: str = "",
-    fecha: Optional[datetime] = None,
+    cdgo_plu,
+    #pso
+    piezas,
+    fecha_fabricacion=Optional[datetime],
 ) -> str:
-    """
-    Formato que describiste al escanear:
-        <id> - <lote> - <otros números aún no definidos> - <ddmmaaaa actual>
-    ⚠️ "otros_numeros" queda vacío hasta que definas qué representan.
-    """
-    fecha = fecha or datetime.now()
-    partes = [str(lote),nivel_limpieza]
-    if otros_numeros:
-        partes.append(str(otros_numeros))
-    partes.append(fecha.strftime("%d%m%Y"))
-    return partes
+    #fecha = fecha or datetime.now()
+    partes = lote,nivel_limpieza,cdgo_plu,piezas,fecha_fabricacion
+    #partes.append(fecha_fabricacion.strftime("%d%m%Y"))
 
+    return partes
 
 # ======================================================================
 # DATOS DE LA ETIQUETA
@@ -142,8 +143,9 @@ class DatosEtiquetaFrescas:
 def construir_datos_etiqueta(
     producto,                       # objeto con .cdgo_plu / .nom_prog (Producto o ProductoConImagenes)
     lote: str,
-    fecha_produccion: str,
+    fecha_produccion: datetime,
     nombre_usuario: str,
+    cod_empresa: int,
     tipo_limpieza_seleccionado: Optional[int] = None,
     peso_bascula: Optional[float] = None,
     numero_ticket: Optional[int] = None,
@@ -151,24 +153,35 @@ def construir_datos_etiqueta(
     nom_impr_etiq: Optional[str] = None,
     fecha_vencimiento_refrigeracion: str = "19/08/2026",  # ⚠️ QUEMADO
 ) -> DatosEtiquetaFrescas:
-    """
-    Arma DatosEtiquetaFrescas combinando lo que sí viene de tus
-    repositorios (producto, lote, fecha_produccion, tipo de limpieza
-    seleccionado, usuario) con los valores quemados de arriba.
-    """
-
-    # ⚠️ CAMBIO vs versión original: en la etiqueta real el PLU y el
-    # nombre van pegados con un guion ("5-CADERA DE RES -SOLOMO...")
-    # y no con un espacio. Confirma que nom_prog no traiga ya el guion
-    # incluido, para no duplicarlo.
  
     descripcion = f"{producto.cdgo_plu}-{producto.nom_prog}".strip()
 
-    contenido_qr = _generar_contenido_qr(
-        #id_registro=producto.cdgo_plu,
-        lote=lote,
-        nivel_limpieza=tipo_limpieza_seleccionado,
+    repo_limpieza = ObtenerTipoLimpiezaRepository(obtener_conexion)
+    ficha_tecnica = repo_limpieza.obtener_ficha_tecnica_producto(
+        plu=producto.cdgo_plu, cod_empresa=cod_empresa
     )
+
+    fecha_vencimiento = calcular_fecha_vencimiento(
+        fecha_fabricacion=fecha_produccion,
+        dia_refr=ficha_tecnica.dia_refr if ficha_tecnica else None,
+    )
+    fecha_vencimiento_str = (
+        fecha_vencimiento.strftime("%d/%m/%Y") if fecha_vencimiento else ""
+    )
+
+    peso_neto = obtener_peso_neto(peso_bascula)
+
+    contenido_qr = _generar_contenido_qr(
+        lote=lote,
+        cdgo_plu = producto.cdgo_plu,
+        nivel_limpieza=tipo_limpieza_seleccionado,
+        #peso_neto_kg
+        #fecha_fabricacion= fecha_produccion,
+        peso_neto_kg=peso_neto,
+        piezas=1,
+        fecha_vencimiento=fecha_vencimiento,
+    )
+    ##
     repo_limpieza = ObtenerTipoLimpiezaRepository(obtener_conexion)
     resultado_sacrificio = repo_limpieza.obtener_fecha_sacrificio(int(lote))
 
@@ -178,19 +191,20 @@ def construir_datos_etiqueta(
         else ""
     )
     nom_impr_etiq_valor = resultado_sacrificio.nom_impr_etiq if resultado_sacrificio else ""
-    
+    print(f"el valor de categoria es, {nom_impr_etiq_valor}")
     return DatosEtiquetaFrescas(
         cdgo_plu=str(producto.cdgo_plu),
         nom_prog=producto.nom_prog,
         descripcion=descripcion,
         lote=str(lote),
         nivel_limpieza=tipo_limpieza_seleccionado,
-        peso_neto_kg=obtener_peso_neto(peso_bascula),
+        peso_neto_kg=obtener_peso_neto(peso_bascula),   #reviasr cuando este el peso de la bascula real 
 
-        fecha_fabricacion=fecha_produccion,  # este sí viene de datos reales
+        fecha_fabricacion=fecha_produccion.strftime("%d/%m/%Y"),
+        #fecha_fabricacion=fecha_produccion,  # este sí viene de datos reales
         fecha_sacrificio= fecha_sacrificio_str or "",
         nom_impr_etiq=nom_impr_etiq or "",
-        fecha_vencimiento_refrigeracion=fecha_vencimiento_refrigeracion,
+        fecha_vencimiento_refrigeracion=fecha_vencimiento_str,
 
         fabricante_nombre=obtener_fabricado_empresa_db(),
         fabricante_direccion=FABRICANTE_DIRECCION,
@@ -204,16 +218,14 @@ def construir_datos_etiqueta(
         recomendacion_uso=RECOMENDACION_USO,
 
         marca=obtener_nombre_empresa(),
+        #categoria=CATEGORIA_DEFAULT,
         categoria=nom_impr_etiq_valor or "",
         codigo=construir_codigo(nombre_usuario, numero_ticket),
 
-        # Mismo contenido en ambos por ahora — si cada QR debe llevar
-        # algo distinto (ej. uno de trazabilidad, otro de la empresa),
-        # avísame y separo la lógica.
         qr_izquierda=contenido_qr,
         qr_derecha=contenido_qr,
     )
-
+    
 
 # ======================================================================
 # DIBUJO / IMPRESIÓN (SISTEMA DE COORDENADAS LOGICAS 1000x450)
@@ -234,7 +246,7 @@ def imprimir_etiqueta_frescas(
     painter.setWindow(0, 0, 450, 1000)
     painter.translate(450, 0)
     painter.rotate(90)
-
+    
     # ================================================================
     # CONFIGURACIÓN GENERAL
     # ================================================================

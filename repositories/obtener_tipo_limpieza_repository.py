@@ -14,6 +14,12 @@ from datetime import date
 
 DB_PRODUCTOS = os.getenv("DB_DATABASE")
 
+@dataclass
+class FichaTecnicaProducto:
+    cdgo_plu: int
+    grmje: Optional[float]
+    dia_refr: Optional[int]
+    dia_cong: Optional[int]
 
 @dataclass
 class TipoLimpieza:
@@ -24,7 +30,7 @@ class TipoLimpieza:
     estdo: int 
 
 @dataclass
-class SacrificioEtiqueta:          # 👈 este es el dataclass
+class SacrificioEtiqueta:
     scrfcio: Optional[date]
     nom_impr_etiq: Optional[str]
 
@@ -38,6 +44,7 @@ class ObtenerTipoLimpiezaRepository:
         consulta = f"""
             SELECT tpo_lmpza, nmbre, prfjo, ctgria_ascda, estdo
             FROM [{DB_PRODUCTOS}].dbo.tpo_lmpza
+            WHERE estdo = 1 order by tpo_lmpza 
         """
 
         with self._obtener_conexion() as conexion:
@@ -74,4 +81,29 @@ class ObtenerTipoLimpiezaRepository:
             return SacrificioEtiqueta(
                 scrfcio=fila[0],
                 nom_impr_etiq=fila[1],
+            )
+
+    def obtener_ficha_tecnica_producto(
+        self, plu: int, cod_empresa: int
+    ) -> Optional[FichaTecnicaProducto]:
+
+        consulta = f"""
+            SELECT cdgo_plu, grmje, dia_refr, dia_cong
+            FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli
+            WHERE cod_emprsa = ?
+              AND cdgo_plu = ?
+            ORDER BY grmje
+        """
+
+        with self._obtener_conexion() as conexion:
+            cursor = conexion.cursor()
+            cursor.execute(consulta, (cod_empresa, plu))
+            fila = cursor.fetchone()
+            if fila is None:
+                return None
+            return FichaTecnicaProducto(
+                cdgo_plu=fila[0],
+                grmje=fila[1],
+                dia_refr=fila[2],
+                dia_cong=fila[3],
             )

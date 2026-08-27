@@ -299,7 +299,8 @@ class SeleccionDeProducto(QWidget):
         layout_principal.setContentsMargins(0, 0, 0, 0)
         layout_principal.setSpacing(0)
 
-        layout_principal.addWidget(self._crear_cabecera())
+        #layout_principal.addWidget(self._crear_cabecera())
+        layout_principal.addWidget(self._crear_boton_atras())
         layout_principal.addWidget(self._crear_tarjetas_info())
         layout_principal.addWidget(self._crear_filtro())
         layout_principal.addWidget(self._crear_titulo_seccion())
@@ -321,43 +322,39 @@ class SeleccionDeProducto(QWidget):
         layout_principal.addWidget(self._crear_paginador_alfabetico())
         layout_principal.addWidget(self._crear_boton_atras())
 
-    # ------------------------------------------------------------------
-    # Cabecera degradada, con adorno tipo "— • TÍTULO • —"
-    # ------------------------------------------------------------------
-    def _crear_cabecera(self):
-        cabecera = QFrame()
-        cabecera.setFixedHeight(64)
-        cabecera.setStyleSheet(
-            f"""
-            QFrame {{
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0.4,
-                    stop:0 {COLOR_PRIMARIO_OSCURO},
-                    stop:0.5 {COLOR_PRIMARIO},
-                    stop:1 #1f7a7a
-                );
+
+    def _crear_boton_atras(self):
+        contenedor = QFrame()
+        contenedor.setFixedHeight(64)   # misma altura que tenía la cabecera, para no mover el resto del layout
+
+        layout = QHBoxLayout(contenedor)
+        layout.setContentsMargins(24, 12, 24, 12)
+
+        boton_atras = QPushButton("←  Atrás")
+        boton_atras.setMinimumHeight(40)
+        boton_atras.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        boton_atras.setStyleSheet(f"""
+            QPushButton {{
+                background: {COLOR_PRIMARIO};
+                color: white;
+                border: 1px solid #D9E2E4;
+                border-radius: 0px;
+                font-size: 13px;
+                font-weight: bold;
             }}
-            """
-        )
+            QPushButton:hover {{
+                background: {COLOR_PRIMARIO_OSCURO};
+            }}
+        """)
+        boton_atras.clicked.connect(self._volver_a_principal)
 
-        layout = QHBoxLayout(cabecera)
-        layout.setContentsMargins(24, 0, 24, 0)
-        layout.setSpacing(10)
+        layout.addWidget(boton_atras)  # sin stretch aparte: al ser el único widget, ya ocupa todo el ancho
 
-        titulo = QLabel("SELECCIÓN DE PRODUCTO")
-        titulo.setStyleSheet(
-            "color: white; font-size: 20px; font-weight: 700; letter-spacing: 1px;"
-        )
-
-        layout.addStretch(1)
-        layout.addWidget(titulo)
-        layout.addStretch(1)
-
-        return cabecera
-
+        return contenedor
     # ------------------------------------------------------------------
     # Tarjetas de información (LOTE / FECHA / ESPECIE / PIEZA)
     # ------------------------------------------------------------------
+
     def _crear_tarjetas_info(self):
         contenedor = QWidget()
         contenedor.setStyleSheet("background: transparent;")
@@ -566,28 +563,6 @@ class SeleccionDeProducto(QWidget):
 
         return contenedor
 
-    def _crear_boton_atras(self):
-        boton_atras = QPushButton("←  ATRÁS")
-        boton_atras.setFixedHeight(50)
-        boton_atras.setStyleSheet(
-            f"""
-            QPushButton {{
-                background: {COLOR_PRIMARIO};
-                color: white;
-                font-size: 14px;
-                font-weight: 700;
-                border: none;
-                letter-spacing: 1px;
-            }}
-            QPushButton:hover {{
-                background: {COLOR_PRIMARIO_OSCURO};
-            }}
-            """
-        )
-        boton_atras.setCursor(Qt.PointingHandCursor)
-        boton_atras.clicked.connect(self._volver_a_principal)
-        return boton_atras
-
     @staticmethod
     def _estilo_boton_navegacion():
         return f"""
@@ -781,6 +756,7 @@ class SeleccionDeProducto(QWidget):
             lote=self._obtener_valor_lote(),
             tpo_pza=self.tpo_pza,
             nombre_tipo_pieza=self.nombre_tipo_pieza,
+            #fecha_sacrificio=self.
         )
         self.ventana_ficha_tecnica.show()
         self.close()

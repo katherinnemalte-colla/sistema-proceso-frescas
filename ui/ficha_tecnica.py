@@ -11,8 +11,9 @@ from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRep
 #from repositories.etiquetas.frescas_100x45 import DatosEtiquetaFrescas
 from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas
 
-ANCHO_CONTENIDO = 950
-
+ANCHO_CONTENIDO = 1150
+COLOR_PRIMARIO = "#1a6b6b"
+COLOR_PRIMARIO_OSCURO = "#134f4f"
 
 class FichaTecnica(QWidget):
     def __init__(
@@ -102,36 +103,36 @@ class FichaTecnica(QWidget):
         layout_externo.addStretch()
 
         # ----------------------------------------------------------
-        # ENCABEZADO: Atrás + título
+        # ENCABEZADO: Atrás
         # ----------------------------------------------------------
         encabezado = QHBoxLayout()
 
         boton_atras = QPushButton("←  Atrás")
-        boton_atras.setFixedSize(110, 40)
-        boton_atras.setStyleSheet("""
-            QPushButton {
-                background-color: white;
-                color: #115E67;
-                border: 1px solid #D9E2E4;
-                border-radius: 8px;
-                font-size: 13px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #EAF4F5;
-            }
-        """)
+        boton_atras.setMinimumHeight(40)          # altura mínima, en vez de tamaño fijo
+        boton_atras.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)  # ancho: crece; alto: fijo
+        boton_atras.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: {COLOR_PRIMARIO};
+                color: white;
+                font-size: 14px;
+                font-weight: 700;
+                border: none;
+                letter-spacing: 1px;
+            }}
+            QPushButton:hover {{
+                background: {COLOR_PRIMARIO_OSCURO};
+            }}"""
+            )
         boton_atras.clicked.connect(self._volver_a_seleccion_de_producto)
-        encabezado.addWidget(boton_atras)
+        encabezado.addWidget(boton_atras, stretch=1)
+        #encabezado.addWidget(boton_atras)
 
-        titulo = QLabel("Ficha técnica del producto")
-        titulo.setAlignment(Qt.AlignCenter)
-        titulo.setStyleSheet("font-size: 22px; font-weight: bold; color: #115E67;")
-        encabezado.addWidget(titulo, stretch=1)
+       
 
         espaciador = QLabel("")
         espaciador.setFixedSize(110, 40)
-        encabezado.addWidget(espaciador)
+        #ncabezado.addWidget(espaciador)
 
         layout.addLayout(encabezado)
 
@@ -180,7 +181,7 @@ class FichaTecnica(QWidget):
                 background-color: white;
                 color: #115E67;
                 border: 1px solid #D9E2E4;
-                border-radius: 10px;
+                border-radius: 0px;
                 font-size: 15px;
                 font-weight: bold;
             }
@@ -197,7 +198,7 @@ class FichaTecnica(QWidget):
                 background-color: #115E67;
                 color: white;
                 border: none;
-                border-radius: 10px;
+                border-radius: 0px;
                 font-size: 15px;
                 font-weight: bold;
             }
@@ -291,6 +292,10 @@ class FichaTecnica(QWidget):
             ("Producto:", self.producto.get("nombre", "-")),
             ("PLU:", str(self.producto.get("cdgo_plu", "-"))),
             ("Especie:", self.especie),
+            ("Fecha Empaque:",self.fecha_produccion),
+            ("Fecha Beneficio:",self.fecha_sacrificio),
+            # etiqueta_fecha = QLabel("Fecha de vencimiento:")
+            #        etiqueta_fecha.setStyleSheet("color: #666; font-size: 13px;")
         ]
 
         # Solo aparece en el flujo RES, cuando sí hay tipo de pieza.
@@ -420,33 +425,106 @@ class FichaTecnica(QWidget):
         titulo.setStyleSheet("font-size: 14px; font-weight: bold; color: #115E67;")
         layout.addWidget(titulo)
 
-        fila_botones = QHBoxLayout()
-        fila_botones.setSpacing(10)
+        # Contenedor donde se dibujarán los botones de la página actual
+        self._contenedor_botones_limpieza = QHBoxLayout()
+        self._contenedor_botones_limpieza.setSpacing(10)
+        layout.addLayout(self._contenedor_botones_limpieza)
 
+        # Fila de paginación (se crea aparte, debajo de los botones)
+        fila_paginacion = QHBoxLayout()
+        fila_paginacion.setSpacing(6)
+
+        self._btn_primera = QPushButton("<<")
+        self._btn_anterior = QPushButton("<")
+        self._lbl_pagina = QLabel("")
+        self._btn_siguiente = QPushButton(">")
+        self._btn_ultima = QPushButton(">>")
+
+        for boton in (self._btn_primera, self._btn_anterior, self._btn_siguiente, self._btn_ultima):
+            boton.setCursor(Qt.PointingHandCursor)
+            boton.setFixedWidth(36)
+            boton.setStyleSheet("""
+                QPushButton {
+                    background-color: white;
+                    color: #115E67;
+                    border: 1px solid #D9E2E4;
+                    border-radius: 6px;
+                    font-weight: 600;
+                }
+                QPushButton:hover { background-color: #EAF4F5; }
+                QPushButton:disabled { color: #BBB; border-color: #EEE; }
+            """)
+
+        self._lbl_pagina.setAlignment(Qt.AlignCenter)
+        self._lbl_pagina.setStyleSheet("color: #115E67; font-size: 12px;")
+
+        self._btn_primera.clicked.connect(lambda: self._ir_a_pagina(0))
+        self._btn_anterior.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza - 1))
+        self._btn_siguiente.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza + 1))
+        self._btn_ultima.clicked.connect(lambda: self._ir_a_pagina(self._total_paginas_limpieza - 1))
+
+        fila_paginacion.addStretch()
+        fila_paginacion.addWidget(self._btn_primera)
+        fila_paginacion.addWidget(self._btn_anterior)
+        fila_paginacion.addWidget(self._lbl_pagina)
+        fila_paginacion.addWidget(self._btn_siguiente)
+        fila_paginacion.addWidget(self._btn_ultima)
+        fila_paginacion.addStretch()
+        layout.addLayout(fila_paginacion)
+
+        # --- Carga de datos ---
         try:
             repositorio_limpieza = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
-            tipos_limpieza = repositorio_limpieza.obtener_tipos_limpieza()
+            self._tipos_limpieza = repositorio_limpieza.obtener_tipos_limpieza()
         except Exception as e:
             print("No fue posible cargar tipos de limpieza:", e)
-            tipos_limpieza = []
+            self._tipos_limpieza = []
 
         self._grupo_limpieza = QButtonGroup(self)
         self._grupo_limpieza.setExclusive(True)
+        self._grupo_limpieza.buttonClicked.connect(self._tipo_limpieza_elegido)
 
-        if not tipos_limpieza:
+        self._tamano_pagina_limpieza = 8  # <-- ajusta cuántos botones caben por fila
+        self._pagina_actual_limpieza = 0
+        self._total_paginas_limpieza = max(
+            1, -(-len(self._tipos_limpieza) // self._tamano_pagina_limpieza)  # ceil
+        )
+
+        self._ir_a_pagina(0)
+
+        return marco
+
+
+    def _ir_a_pagina(self, numero_pagina: int):
+        """Recalcula límites, limpia los botones actuales y dibuja los de la nueva página."""
+        numero_pagina = max(0, min(numero_pagina, self._total_paginas_limpieza - 1))
+        self._pagina_actual_limpieza = numero_pagina
+
+        # 1. Sacar del QButtonGroup y borrar los botones actuales
+        for boton in list(self._grupo_limpieza.buttons()):
+            self._grupo_limpieza.removeButton(boton)
+            self._contenedor_botones_limpieza.removeWidget(boton)
+            boton.deleteLater()
+
+        # 2. Calcular el slice de datos para esta página
+        inicio = numero_pagina * self._tamano_pagina_limpieza
+        fin = inicio + self._tamano_pagina_limpieza
+        tipos_pagina = self._tipos_limpieza[inicio:fin]
+
+        # 3. Crear los botones de la página actual
+        if not tipos_pagina:
             etiqueta_vacio = QLabel("No hay tipos de limpieza configurados.")
             etiqueta_vacio.setStyleSheet("color: #999; font-size: 13px;")
-            fila_botones.addWidget(etiqueta_vacio)
+            self._contenedor_botones_limpieza.addWidget(etiqueta_vacio)
         else:
-            for tipo in tipos_limpieza:
-                boton = QPushButton(tipo.nmbre or f"Tipo {tipo.tpo_lmpza}")
+            for tipo in tipos_pagina:
+                boton = QPushButton(f"{tipo.tpo_lmpza}")
                 boton.setCheckable(True)
                 boton.setCursor(Qt.PointingHandCursor)
                 boton.setMinimumHeight(42)
                 boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 boton.setProperty("tpo_lmpza", tipo.tpo_lmpza)
                 boton.setProperty("nombre_limpieza", tipo.nmbre)
-
                 boton.setStyleSheet("""
                     QPushButton {
                         background-color: white;
@@ -456,29 +534,26 @@ class FichaTecnica(QWidget):
                         font-size: 13px;
                         font-weight: 600;
                     }
-                    QPushButton:hover {
-                        background-color: #EAF4F5;
-                    }
+                    QPushButton:hover { background-color: #EAF4F5; }
                     QPushButton:checked {
                         background-color: #115E67;
                         color: white;
                         border: 1px solid #115E67;
                     }
                 """)
-
                 self._grupo_limpieza.addButton(boton)
-                fila_botones.addWidget(boton)
+                self._contenedor_botones_limpieza.addWidget(boton)
 
-            self._grupo_limpieza.buttonClicked.connect(self._tipo_limpieza_elegido)
-
-        fila_botones.addStretch()
-        layout.addLayout(fila_botones)
-
-        return marco
+        # 4. Actualizar etiqueta e (des)habilitar flechas
+        self._lbl_pagina.setText(f"{self._pagina_actual_limpieza + 1} / {self._total_paginas_limpieza}")
+        self._btn_primera.setEnabled(self._pagina_actual_limpieza > 0)
+        self._btn_anterior.setEnabled(self._pagina_actual_limpieza > 0)
+        self._btn_siguiente.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
+        self._btn_ultima.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
 
     def _tipo_limpieza_elegido(self, boton):
         self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
-        print("Tipo de limpieza seleccionado:", boton.property("nombre_limpieza"))
+        print("Tipo de limpieza seleccionado:", boton.property("tpo_lmpza"))
 
     # ==============================================================
     # BÁSCULA - PESO (placeholder, sin hardware conectado todavía)
@@ -540,13 +615,13 @@ class FichaTecnica(QWidget):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(8)
 
-        titulo = QLabel("Datos adicionales")
-        titulo.setStyleSheet("font-size: 15px; font-weight: bold; color: #115E67;")
-        layout.addWidget(titulo)
+        #titulo = QLabel("Datos adicionales")
+        #titulo.setStyleSheet("font-size: 15px; font-weight: bold; color: #115E67;")
+        #layout.addWidget(titulo)
 
-        etiqueta_fecha = QLabel("Fecha de vencimiento:")
-        etiqueta_fecha.setStyleSheet("color: #666; font-size: 13px;")
-        layout.addWidget(etiqueta_fecha)
+        #etiqueta_fecha = QLabel("Fecha de vencimiento:")
+        #etiqueta_fecha.setStyleSheet("color: #666; font-size: 13px;")
+        #layout.addWidget(etiqueta_fecha)
 
 
         layout.addStretch()
