@@ -1,21 +1,3 @@
-"""
-seleccion_producto.py
-
-Pantalla "SELECCIÓN DE PRODUCTO".
-
-Muestra los productos (con imagen) de la especie/lote actuales, navegables
-mediante un paginador alfabético (por la primera letra de p.nmbre_crto) y
-filtrables por N° PLU. Al elegir un producto se abre la Ficha Técnica.
-
-Para RES (vaca), en vez de filtrar por especie recibe tpo_pza (DELANTERO/
-TRASERO, elegido en VentanaPrincipal) y usa ObtenerTipoPzaRepository, que
-expone la misma interfaz que ImagenRepository. El resto de la pantalla no
-necesita saber cuál de los dos está usando.
-
-Capa: UI. No contiene SQL: todo el acceso a datos pasa por el repositorio
-correspondiente (ImagenRepository o ObtenerTipoPzaRepository).
-"""
-
 import os
 
 from PySide6.QtCore import Qt, Signal, QTimer, QByteArray
@@ -55,8 +37,6 @@ COLOR_BORDE = "#dfe6e6"
 COLOR_TEXTO_SECUNDARIO = "#8a97a0"
 COLOR_FONDO = "#eef3f3"
 
-# Carpeta donde viven los íconos (nombres simples: box.png, calendar.png,
-# cow.png, search.png). Ajusta esta ruta si tu proyecto la ubica distinto.
 RUTA_ICONOS = os.path.join("assets", "icons", "icons")
 
 
@@ -85,12 +65,6 @@ def _aplicar_sombra(widget, blur=18, dx=0, dy=4, alfa=40):
 
 
 class ImagenEscalable(QLabel):
-    """
-    QLabel que guarda el pixmap ORIGINAL (sin escalar) y lo vuelve a
-    escalar cada vez que el propio label cambia de tamaño. Así la
-    imagen se achica/agranda junto con la ventana, igual que el resto
-    de los widgets, en vez de quedarse fija en píxeles.
-    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -242,21 +216,26 @@ class SeleccionDeProducto(QWidget):
         self,
         usuario,
         lotes,
+        obtener_conexion,
+        app_ventana,
+        parent=None,
+        *,
         fecha_produccion,
         especie,
         numEspecie,
         tpo_pza=None,
         nombre_tipo_pieza=None,
-        parent=None,
     ):
         super().__init__(parent)
         self.usuario = usuario
-
+        self._obtener_conexion = obtener_conexion
+        self._app = app_ventana
         self.fecha_produccion = fecha_produccion
         self.especie = especie
         self.numEspecie = numEspecie
         self.tpo_pza = tpo_pza
         self.nombre_tipo_pieza = nombre_tipo_pieza
+
 
         # ------------------------------------------------------------
         # REPOSITORIO: cuál usar depende de si viene tpo_pza (RES) o no.
@@ -286,10 +265,6 @@ class SeleccionDeProducto(QWidget):
     # ------------------------------------------------------------------
     # Conexión a BD — ajustar según el módulo real del proyecto
     # ------------------------------------------------------------------
-    def _obtener_conexion(self):
-        from models.database import obtener_conexion  # import local para evitar ciclos
-        return obtener_conexion()
-
     # ------------------------------------------------------------------
     # Construcción de la UI
     # ------------------------------------------------------------------
@@ -746,9 +721,8 @@ class SeleccionDeProducto(QWidget):
             "nombre": producto.nom_prog,
             "imagen": producto.imagen_principal,
         }
-
-        self.ventana_ficha_tecnica = FichaTecnica(
-            usuario=self.usuario,
+        self._app.mostrar_ficha(
+            #usuario=self.usuario,
             producto=producto_dict,
             fecha_produccion=self.fecha_produccion,
             especie=self.especie,
@@ -756,14 +730,8 @@ class SeleccionDeProducto(QWidget):
             lote=self._obtener_valor_lote(),
             tpo_pza=self.tpo_pza,
             nombre_tipo_pieza=self.nombre_tipo_pieza,
-            #fecha_sacrificio=self.
         )
-        self.ventana_ficha_tecnica.show()
-        self.close()
 
     def _volver_a_principal(self):
-        from ui.ventana_principal import VentanaPrincipal
-
-        self.ventana_principal = VentanaPrincipal(self.usuario)
-        self.ventana_principal.show()
-        self.close()
+        self._app.mostrar_principal()
+        

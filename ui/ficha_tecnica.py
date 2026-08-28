@@ -24,6 +24,9 @@ class FichaTecnica(QWidget):
         especie: str,
         numEspecie,
         lote: str,
+        obtener_conexion, 
+        app_ventana,
+         *,
         tpo_pza=None,
         nombre_tipo_pieza=None,
         fecha_sacrificio=None,
@@ -31,6 +34,8 @@ class FichaTecnica(QWidget):
     ):
         super().__init__()
         self.usuario = usuario
+        self._obtener_conexion = obtener_conexion
+        self._app = app_ventana
         self.producto = producto
         self.fecha_produccion = fecha_produccion
         self.especie = especie
@@ -672,28 +677,7 @@ class FichaTecnica(QWidget):
         print("Guardar peso:", datos)
         """
     def _volver_a_seleccion_de_producto(self):
-        from ui.seleccion_de_producto import SeleccionDeProducto
-        from repositories.obtener_lote_fecha_repository import ObtenerLoteFechaRepository
-
-        repository = ObtenerLoteFechaRepository()
-        fecha_bd = self.fecha_produccion.replace("-", "/")
-        lotes = repository.obtener_lotes_por_especie(fecha_bd, self.numEspecie)
-
-        self.seleccion_de_producto = SeleccionDeProducto(
-            usuario=self.usuario,
-            fecha_produccion=self.fecha_produccion,
-            especie=self.especie,
-            numEspecie=self.numEspecie,
-            tpo_pza=self.tpo_pza,
-            nombre_tipo_pieza=self.nombre_tipo_pieza,
-            lotes=lotes,
-        )
-        self.seleccion_de_producto.show()
-        self.close()
-
+        self._app.mostrar_seleccion_sin_recargar()
+    
     def _volver_a_inicio(self):
-        from ui.ventana_principal import VentanaPrincipal
-
-        self.ventana_principal = VentanaPrincipal(self.usuario)
-        self.ventana_principal.show()
-        self.close()
+        self._app.mostrar_principal()

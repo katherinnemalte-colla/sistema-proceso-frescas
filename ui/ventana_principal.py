@@ -24,6 +24,7 @@ from repositories.obtener_lote_fecha_repository import (
     ObtenerLoteFechaRepository
 )
 from ui.seleccion_de_producto import SeleccionDeProducto
+from ui.ficha_tecnica import FichaTecnica 
 
 
 # ==============================================================
@@ -59,14 +60,11 @@ ANCHO_CONTENIDO_MIN = 380
 
 class VentanaPrincipal(QWidget):
 
-    def __init__(self, usuario: Usuario):
+    def __init__(self, usuario: Usuario, obtener_conexion , app_ventana):
         super().__init__()
-
-        # ----------------------------------------------------------
-        # USUARIO
-        # ----------------------------------------------------------
-
         self.usuario = usuario
+        self._obtener_conexion = obtener_conexion
+        self._app = app_ventana
 
         # ----------------------------------------------------------
         # REPOSITORIES
@@ -870,18 +868,14 @@ class VentanaPrincipal(QWidget):
         # aceptar estos kwargs (o ignorarlos) para que esto no rompa
         # el flujo de las demás especies.
         # --------------------------------------------------------------
-
-        self.ventana_seleccion_producto = SeleccionDeProducto(
-            usuario=self.usuario,
+        self._app.mostrar_seleccion(
+            lotes=lotes,
             fecha_produccion=fecha.toString("yyyy-MM-dd"),
             especie=nombre_especie,
-            numEspecie= id_especie,
+            numEspecie=id_especie,
             tpo_pza=tpo_pza,
-            lotes=lotes
-            
         )
-        self.ventana_seleccion_producto.show()
-        self.close()
+        
 
     # ==============================================================
     # FECHA CAMBIADA
