@@ -29,8 +29,9 @@ class FichaTecnica(QWidget):
          *,
         tpo_pza=None,
         nombre_tipo_pieza=None,
-        fecha_sacrificio=None,
+        fecha_sacrificio: str,
         nom_impr_etiq = None,
+        empresa,
     ):
         super().__init__()
         self.usuario = usuario
@@ -40,7 +41,7 @@ class FichaTecnica(QWidget):
         self.fecha_produccion = fecha_produccion
         self.especie = especie
         self.numEspecie = int(numEspecie)
-        self.lote = lote
+        self.lote = int(lote)
         self.tpo_pza = tpo_pza
         self.nombre_tipo_pieza = nombre_tipo_pieza
 
@@ -48,6 +49,7 @@ class FichaTecnica(QWidget):
         self.peso_actual = 0.000  # placeholder: aquí se conectará la báscula real
         self.fecha_sacrificio = fecha_sacrificio
         self.nom_impr_etiq  = nom_impr_etiq
+        self.empresa = empresa
         # ------------------------------------------------------------
         # LAS 6 IMÁGENES: solo se consultan cuando viene de RES
         # (tpo_pza no es None). El diccionario "producto" que llega de
@@ -284,7 +286,12 @@ class FichaTecnica(QWidget):
                 border-radius: 12px;
             }
         """)
-
+        resultado_sacrificio = ObtenerTipoLimpiezaRepository.obtener_fecha_sacrificio(self,self.lote)
+        fecha_sacrificio_str = (
+            resultado_sacrificio.scrfcio
+            if resultado_sacrificio and resultado_sacrificio.scrfcio
+            else ""
+        )
         layout = QVBoxLayout(marco)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
@@ -294,33 +301,31 @@ class FichaTecnica(QWidget):
         layout.addWidget(titulo)
 
         datos = [
-            ("Producto:", self.producto.get("nombre", "-")),
-            ("PLU:", str(self.producto.get("cdgo_plu", "-"))),
-            ("Especie:", self.especie),
-            ("Fecha Empaque:",self.fecha_produccion),
-            ("Fecha Beneficio:",self.fecha_sacrificio),
-            # etiqueta_fecha = QLabel("Fecha de vencimiento:")
-            #        etiqueta_fecha.setStyleSheet("color: #666; font-size: 13px;")
+            [("PLU:", self.producto.get("cdgo_plu", "-")), ("Producto:", self.producto.get("nombre", "-"))],
+            [("Especie:", self.especie), ("Empresa:", self.empresa)],
+            [("Fecha Empaque:", self.fecha_produccion)],
+            [("Fecha Beneficio:", fecha_sacrificio_str)],
+            [("Fecha Vence en Congelación:", self.fecha_sacrificio),("Días Vence:", self.fecha_sacrificio) ],
         ]
 
-        # Solo aparece en el flujo RES, cuando sí hay tipo de pieza.
         if self.tpo_pza is not None and self.nombre_tipo_pieza:
-            datos.append(("Tipo de pieza:", self.nombre_tipo_pieza))
+            datos.append([("Tipo de pieza:", self.nombre_tipo_pieza)])
 
-        for etiqueta_texto, valor_texto in datos:
+        for grupo in datos:
             fila = QHBoxLayout()
-            etiqueta = QLabel(etiqueta_texto)
-            etiqueta.setFixedWidth(110)
-            etiqueta.setStyleSheet("color: #666; font-size: 13px;")
+            for etiqueta_texto, valor_texto in grupo:
+                etiqueta = QLabel(etiqueta_texto)
+                etiqueta.setFixedWidth(110)
+                etiqueta.setStyleSheet("color: #666; font-size: 13px;")
 
-            valor = QLabel(str(valor_texto))
-            valor.setWordWrap(True)
-            valor.setStyleSheet("color: #222; font-size: 13px; font-weight: bold;")
+                valor = QLabel(str(valor_texto))
+                valor.setWordWrap(True)
+                valor.setStyleSheet("color: #222; font-size: 13px; font-weight: bold;")
 
-            fila.addWidget(etiqueta)
-            fila.addWidget(valor, stretch=1)
+                fila.addWidget(etiqueta)
+                fila.addWidget(valor, stretch=1)
+
             layout.addLayout(fila)
-
         layout.addStretch()
         return marco
 
@@ -646,9 +651,11 @@ class FichaTecnica(QWidget):
             lote=self.lote,
             fecha_produccion=self.fecha_produccion,
             nombre_usuario=self.usuario,
+            cod_empresa=self.empresa,
             tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
             fecha_sacrificio=self.fecha_sacrificio,
             nom_impr_etiq = self.nom_impr_etiq,
+            
     )
         """
     def _guardar_peso(self):

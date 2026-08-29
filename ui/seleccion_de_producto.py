@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QGraphicsDropShadowEffect,
 )
-
+from PySide6.QtGui import QIntValidator
 from utils.ventana_utils import aplicar_tamano
 from repositories.imagen_repository import ImagenRepository, TAMANO_PAGINA
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
@@ -277,7 +277,7 @@ class SeleccionDeProducto(QWidget):
         #layout_principal.addWidget(self._crear_cabecera())
         layout_principal.addWidget(self._crear_boton_atras())
         layout_principal.addWidget(self._crear_tarjetas_info())
-        layout_principal.addWidget(self._crear_filtro())
+        layout_principal.addWidget(self._crear_fila_filtros())
         layout_principal.addWidget(self._crear_titulo_seccion())
 
         # Área con scroll para la grilla de productos
@@ -426,12 +426,23 @@ class SeleccionDeProducto(QWidget):
     # ------------------------------------------------------------------
     # Filtro por PLU
     # ------------------------------------------------------------------
+    def _crear_fila_filtros(self):
+        contenedor = QWidget()
+        layout = QHBoxLayout(contenedor)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        layout.addWidget(self._crear_filtro())
+        layout.addWidget(self._crear_filtro_empresa())
+
+        return contenedor
+    
     def _crear_filtro(self):
         contenedor = QFrame()
         contenedor.setStyleSheet(
             f"background: white; border: 1px solid {COLOR_BORDE}; border-radius: 12px;"
         )
-        _aplicar_sombra(contenedor, blur=14, dy=2, alfa=15)
+        _aplicar_sombra(contenedor, blur=14, dy=2, alfa=18)
 
         layout = QHBoxLayout(contenedor)
         layout.setContentsMargins(10, 8, 16, 8)
@@ -456,7 +467,6 @@ class SeleccionDeProducto(QWidget):
             QLineEdit {{
                 border: none;
                 border-left: 1px solid {COLOR_BORDE};
-                border-radius: 0px;
                 padding: 6px 12px;
                 font-size: 13px;
             }}
@@ -480,6 +490,55 @@ class SeleccionDeProducto(QWidget):
         layout_envoltorio.addWidget(contenedor)
         return envoltorio
 
+
+# o si usas PyQt: from PyQt5.QtGui import QIntValidator
+
+    def _crear_filtro_empresa(self):
+        contenedor = QFrame()
+        contenedor.setStyleSheet(
+            f"background: white; border: 1px solid {COLOR_BORDE}; border-radius: 12px;"
+        )
+        _aplicar_sombra(contenedor, blur=14, dy=2, alfa=15)
+
+        layout = QHBoxLayout(contenedor)
+        layout.setContentsMargins(10, 8, 16, 8)
+        layout.setSpacing(12)
+        circulo_buscar = QLabel()
+        circulo_buscar.setFixedSize(36, 36)
+        circulo_buscar.setAlignment(Qt.AlignCenter)
+        circulo_buscar.setStyleSheet(
+            f"background: {COLOR_PRIMARIO}; border-radius: 18px;"
+        )
+        icono_buscar = _icono_pixmap("empresa.png", 18)
+        if icono_buscar is not None:
+            circulo_buscar.setPixmap(icono_buscar)
+
+        etiqueta = QLabel("Empresa")
+        etiqueta.setStyleSheet(f"color: {COLOR_PRIMARIO}; font-weight: 700; font-size: 13px;")
+
+        self.campo_empresa = QLineEdit()
+        self.campo_empresa.setValidator(QIntValidator(0, 999999, self))
+        self.campo_empresa.setPlaceholderText("N°")
+        self.campo_empresa.setStyleSheet(
+            f"""
+            QLineEdit {{
+                border: none;
+                border-left: 1px solid {COLOR_BORDE};
+                padding: 6px 12px;
+                font-size: 13px;
+            }}
+            """
+        )
+        layout.addWidget(circulo_buscar)
+        layout.addWidget(etiqueta)
+        layout.addWidget(self.campo_empresa, stretch=1)
+
+        envoltorio = QWidget()
+        envoltorio.setStyleSheet("background: transparent;")
+        layout_envoltorio = QVBoxLayout(envoltorio)
+        layout_envoltorio.setContentsMargins(24, 8, 24, 8)
+        layout_envoltorio.addWidget(contenedor)
+        return envoltorio
     # ------------------------------------------------------------------
     # Título de sección con el mismo adorno de la cabecera
     # ------------------------------------------------------------------
@@ -722,7 +781,6 @@ class SeleccionDeProducto(QWidget):
             "imagen": producto.imagen_principal,
         }
         self._app.mostrar_ficha(
-            #usuario=self.usuario,
             producto=producto_dict,
             fecha_produccion=self.fecha_produccion,
             especie=self.especie,
@@ -730,6 +788,9 @@ class SeleccionDeProducto(QWidget):
             lote=self._obtener_valor_lote(),
             tpo_pza=self.tpo_pza,
             nombre_tipo_pieza=self.nombre_tipo_pieza,
+            fecha_sacrificio = None,
+            empresa=self.campo_empresa.text(),
+            
         )
 
     def _volver_a_principal(self):

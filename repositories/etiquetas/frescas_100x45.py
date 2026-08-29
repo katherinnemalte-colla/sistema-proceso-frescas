@@ -28,9 +28,6 @@ ANCHO_MM = 100
 ALTO_MM = 45
 
 FABRICANTE_DIRECCION = "Cra. 126A #17-90 Int. 10"
-FABRICANTE_CIUDAD = "Bogotá"
-#FABRICANTE_PAIS = "COL"
-FABRICANTE_TELEFONO = "601-4187884"
 
 # conservación: valores estándar del rótulo, no dependen del producto.
 TEMPERATURA_MINIMA_C = 0
@@ -43,7 +40,7 @@ RECOMENDACION_USO = "consumase bien cocido a temperatura superior de 70°C"
 CODIGO_PROCESO_DEFAULT = socket.gethostname()
 
 def calcular_fecha_vencimiento(
-    fecha_fabricacion: datetime,
+    fecha_fabricacion: str,
     dia_refr: Optional[int],
 ) -> Optional[datetime]:
     if dia_refr is None:
@@ -151,7 +148,7 @@ def construir_datos_etiqueta(
     numero_ticket: Optional[int] = None,
     fecha_sacrificio: Optional[str] = None,                # ⚠️ QUEMADO
     nom_impr_etiq: Optional[str] = None,
-    fecha_vencimiento_refrigeracion: str = "19/08/2026",  # ⚠️ QUEMADO
+    fecha_vencimiento_refrigeracion: datetime = "19/08/2026",  # ⚠️ QUEMADO
 ) -> DatosEtiquetaFrescas:
  
     descripcion = f"{producto.cdgo_plu}-{producto.nom_prog}".strip()
@@ -179,7 +176,7 @@ def construir_datos_etiqueta(
         #fecha_fabricacion= fecha_produccion,
         peso_neto_kg=peso_neto,
         piezas=1,
-        fecha_vencimiento=fecha_vencimiento,
+        #fecha_vencimiento=fecha_vencimiento,
     )
     ##
     repo_limpieza = ObtenerTipoLimpiezaRepository(obtener_conexion)
