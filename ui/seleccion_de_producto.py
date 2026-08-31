@@ -19,7 +19,7 @@ from PySide6.QtGui import QIntValidator
 from utils.ventana_utils import aplicar_tamano
 from repositories.imagen_repository import ImagenRepository, TAMANO_PAGINA
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
-from ui.ficha_tecnica import FichaTecnica
+from utils import fechas
 
 
 # Cuántos botones de letra se muestran a la vez en el paginador.
@@ -38,7 +38,6 @@ COLOR_TEXTO_SECUNDARIO = "#8a97a0"
 COLOR_FONDO = "#eef3f3"
 
 RUTA_ICONOS = os.path.join("assets", "icons", "icons")
-
 
 def _ruta_icono(nombre_archivo):
     return os.path.join(RUTA_ICONOS, nombre_archivo)
@@ -341,7 +340,7 @@ class SeleccionDeProducto(QWidget):
             self._crear_tarjeta("LOTE", self._obtener_valor_lote(), "box.png")
         )
         layout.addWidget(
-            self._crear_tarjeta("FECHA DE PRODUCCIÓN", str(self.fecha_produccion), "calendar.png")
+            self._crear_tarjeta("FECHA DE PRODUCCIÓN", self.fecha_produccion, "calendar.png")
         )
         layout.addWidget(
             self._crear_tarjeta("ESPECIE", str(self.especie), "cow.png")
@@ -773,8 +772,7 @@ class SeleccionDeProducto(QWidget):
     # Navegación a otras pantallas
     # ------------------------------------------------------------------
     def _abrir_ficha_tecnica(self, producto):
-        # FichaTecnica espera un diccionario (usa producto.get('nombre', '')),
-        # así que convertimos el objeto Producto antes de pasarlo.
+
         producto_dict = {
             "cdgo_plu": producto.cdgo_plu,
             "nombre": producto.nom_prog,
