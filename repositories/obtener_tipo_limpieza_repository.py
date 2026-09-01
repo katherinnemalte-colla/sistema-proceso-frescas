@@ -10,7 +10,8 @@ Capa: Repository. Toda el acceso a datos vive acá; la UI no arma SQL.
 import os
 from dataclasses import dataclass
 from typing import List, Optional
-from datetime import date
+from datetime import date, timedelta
+from typing import Optional
 
 DB_PRODUCTOS = os.getenv("DB_DATABASE")
 
@@ -61,7 +62,7 @@ class ObtenerTipoLimpiezaRepository:
                 for fila in cursor.fetchall()
             ]
 
-    def obtener_fecha_sacrificio(self, nmro_lte: int) -> Optional[SacrificioEtiqueta]:
+    def obtener_fecha_sacrificio(self, nmro_lte: int, espcie: int ) -> Optional[SacrificioEtiqueta]:
         consulta = f"""
             SELECT a.scrfcio, b.nom_impr_etiq
             FROM [{DB_PRODUCTOS}].dbo.LTES_CMPRA_ESPCIE a,
@@ -70,11 +71,11 @@ class ObtenerTipoLimpiezaRepository:
             AND a.cntro_pr = 1
             AND a.tpo_ctgria = b.cod_cat
             AND a.tpo_cmpra = 'P'
-            AND a.espcie = 1
+            AND a.espcie = ?
         """
         with self._obtener_conexion() as conexion:
             cursor = conexion.cursor()
-            cursor.execute(consulta, (nmro_lte,))
+            cursor.execute(consulta, (nmro_lte,espcie,))
             fila = cursor.fetchone()
             if fila is None:
                 return None
@@ -83,27 +84,93 @@ class ObtenerTipoLimpiezaRepository:
                 nom_impr_etiq=fila[1],
             )
 
-    def obtener_ficha_tecnica_producto(
-        self, plu: int, cod_empresa: int
-    ) -> Optional[FichaTecnicaProducto]:
-
-        consulta = f"""
-            SELECT cdgo_plu, grmje, dia_refr, dia_cong
-            FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli
-            WHERE cod_emprsa = ?
-              AND cdgo_plu = ?
-            ORDER BY grmje
+    def obtener_dias_vencimiento(
+        self,
+        codigo_producto: int,
+        codigo_empresa: int,
+    ) -> tuple[Optional[int], Optional[int]]:
         """
-
+        Trae (dias_ref, dias_cong) en una sola consulta.
+        """
         with self._obtener_conexion() as conexion:
             cursor = conexion.cursor()
-            cursor.execute(consulta, (cod_empresa, plu))
-            fila = cursor.fetchone()
-            if fila is None:
+
+            if codigo_empresa == 1:
+                cursor.execute("""
+                    SELECT dias_ref, dias_cong
+                    FROM PRDCTOS
+                    WHERE cdgo_plu = ?
+                """, (codigo_producto,))
+            else:
+                cursor.execute("""
+                    SELECT dia_refr, dia_cong
+                    FROM ficha_tec_prod_cli
+                    WHERE cdgo_plu = ?
+                    AND cod_emprsa = ?
+                    order by grmje
+                """, (codigo_producto, codigo_empresa))
+
+            row = cursor.fetchone()
+            if not row:
+                return None, None
+
+            return row[0], row[1]
+
+    def obtener_fecha_vencimiento(
+        self,
+        codigo_producto: int,
+        codigo_empresa: int,
+        fecha_produccion: date,
+        tipo_conservacion: str
+    ) -> Optional[date]:
+        
+        with self._obtener_conexion() as conexion:
+            cursor = conexion.cursor()
+        
+            if codigo_empresa == 1:
+                cursor.execute("""
+                    SELECT dias_ref, dias_cong
+                    FROM PRDCTOS
+                    WHERE cdgo_plu = ?
+                """, (codigo_producto,))
+        
+                row = cursor.fetchone()
+        
+                if not row:
+                    return None
+        
+                dias_ref = row.dias_ref
+                dias_cong = row.dias_cong
+        
+            else:
+                cursor.execute("""
+                    SELECT dia_refr, dia_cong
+                    FROM ficha_tec_prod_cli
+                    WHERE cdgo_plu = ?
+                      AND cod_emprsa = ?
+                      order by grmje
+                """, (codigo_producto, codigo_empresa))
+        
+                row = cursor.fetchone()
+        
+                if not row:
+                    return None
+        
+                dias_ref = row.dia_refr
+                dias_cong = row.dia_cong
+        
+            if tipo_conservacion == "refrigerado":
+                dias = dias_ref
+        
+            elif tipo_conservacion == "congelado":
+                dias = dias_cong
+        
+            else:
+                raise ValueError(
+                    "Tipo de conservación debe ser 'refrigerado' o 'congelado'"
+                )
+        
+            if dias is None:
                 return None
-            return FichaTecnicaProducto(
-                cdgo_plu=fila[0],
-                grmje=fila[1],
-                dia_refr=fila[2],
-                dia_cong=fila[3],
-            )
+        
+            return fecha_produccion + timedelta(days=int(dias))

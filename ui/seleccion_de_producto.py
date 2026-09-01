@@ -788,6 +788,7 @@ class SeleccionDeProducto(QWidget):
             nombre_tipo_pieza=self.nombre_tipo_pieza,
             fecha_sacrificio = None,
             empresa=self.campo_empresa.text(),
+            fecha_vencimiento_str = None,
             
         )
 

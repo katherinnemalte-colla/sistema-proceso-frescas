@@ -2,43 +2,46 @@ from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame, QGridLayout,
     QVBoxLayout, QHBoxLayout, QDateEdit, QButtonGroup, QSizePolicy
 )
+from datetime import timedelta,date
+from typing import Optional
 from PySide6.QtCore import Qt, QSize, QDate
 from PySide6.QtGui import QPixmap, QIcon
 from types import SimpleNamespace
 from utils.ventana_utils import aplicar_tamano
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
-#from repositories.etiquetas.frescas_100x45 import DatosEtiquetaFrescas
+from utils import fechas
 from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas
 
 ANCHO_CONTENIDO = 1150
 COLOR_PRIMARIO = "#1a6b6b"
 COLOR_PRIMARIO_OSCURO = "#134f4f"
-
 class FichaTecnica(QWidget):
     def __init__(
         self,
         usuario,
         producto: dict,
-        fecha_produccion: str,
+        fecha_produccion,
         especie: str,
         numEspecie,
         lote: str,
-        obtener_conexion, 
+        obtener_conexion,
         app_ventana,
-         *,
+        *,
         tpo_pza=None,
         nombre_tipo_pieza=None,
-        fecha_sacrificio: str,
-        nom_impr_etiq = None,
+        fecha_sacrificio,
+        nom_impr_etiq=None,
         empresa,
+        fecha_vencimiento_str,
     ):
         super().__init__()
+
         self.usuario = usuario
         self._obtener_conexion = obtener_conexion
         self._app = app_ventana
         self.producto = producto
-        self.fecha_produccion = fecha_produccion
+        self.fecha_produccion = fechas._asegurar_date(fecha_produccion)
         self.especie = especie
         self.numEspecie = int(numEspecie)
         self.lote = int(lote)
@@ -47,9 +50,11 @@ class FichaTecnica(QWidget):
 
         self.seleccion_de_producto = None
         self.peso_actual = 0.000  # placeholder: aquí se conectará la báscula real
-        self.fecha_sacrificio = fecha_sacrificio
-        self.nom_impr_etiq  = nom_impr_etiq
+        self.fecha_sacrificio = fechas._asegurar_date(fecha_sacrificio)
+        self.nom_impr_etiq = nom_impr_etiq
         self.empresa = empresa
+        self.fecha_vencimiento_str = fechas._asegurar_date(fecha_vencimiento_str)
+
         # ------------------------------------------------------------
         # LAS 6 IMÁGENES: solo se consultan cuando viene de RES
         # (tpo_pza no es None). El diccionario "producto" que llega de
@@ -86,7 +91,25 @@ class FichaTecnica(QWidget):
     # ==============================================================
     # INTERFAZ
     # ==============================================================
-
+    def _obtener_datos_vencimiento(self) -> tuple[Optional[int], Optional[int], Optional[date], Optional[date]]:
+            """
+            Devuelve (dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion),
+            con una sola consulta al repositorio.
+            """
+            codigo_producto = self.producto.get("cdgo_plu")
+            codigo_empresa = self.empresa
+    
+            repo = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
+            dias_ref, dias_cong = repo.obtener_dias_vencimiento(codigo_producto, codigo_empresa)
+    
+            fecha_vencimiento_refrigeracion = (
+                self.fecha_produccion + timedelta(days=int(dias_ref)) if dias_ref is not None else None
+            )
+            fecha_vencimiento_congelacion = (
+                self.fecha_produccion + timedelta(days=int(dias_cong)) if dias_cong is not None else None
+            )
+            print(f"'lo que retorna en ficha tecnica de dias': {dias_ref}, {dias_cong}")
+            return dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion
     def _crear_interfaz(self):
         layout_externo = QVBoxLayout()
         layout_externo.setContentsMargins(0, 0, 0, 0)
@@ -133,9 +156,6 @@ class FichaTecnica(QWidget):
             )
         boton_atras.clicked.connect(self._volver_a_seleccion_de_producto)
         encabezado.addWidget(boton_atras, stretch=1)
-        #encabezado.addWidget(boton_atras)
-
-       
 
         espaciador = QLabel("")
         espaciador.setFixedSize(110, 40)
@@ -212,9 +232,10 @@ class FichaTecnica(QWidget):
             QPushButton:hover {
                 background-color: #0D4D55;
             }
-        """)
+        """) 
+       
         boton_guardar.clicked.connect(self._guardar_peso)
-
+       
         fila_botones.addWidget(boton_inicio)
         fila_botones.addWidget(boton_guardar)
         layout.addLayout(fila_botones)
@@ -286,12 +307,14 @@ class FichaTecnica(QWidget):
                 border-radius: 12px;
             }
         """)
-        resultado_sacrificio = ObtenerTipoLimpiezaRepository.obtener_fecha_sacrificio(self,self.lote)
+        resultado_sacrificio = ObtenerTipoLimpiezaRepository.obtener_fecha_sacrificio(self,self.lote, self.numEspecie)
         fecha_sacrificio_str = (
             resultado_sacrificio.scrfcio
             if resultado_sacrificio and resultado_sacrificio.scrfcio
-            else ""
+            else "-"
         )
+        self.fecha_sacrificio = resultado_sacrificio.scrfcio if resultado_sacrificio else None
+        
         layout = QVBoxLayout(marco)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
@@ -300,14 +323,49 @@ class FichaTecnica(QWidget):
         titulo.setStyleSheet("font-size: 15px; font-weight: bold; color: #115E67;")
         layout.addWidget(titulo)
 
+
+        dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion = (
+            self._obtener_datos_vencimiento()
+        )
+
+        if dias_cong is not None:
+            etiqueta_vencimiento = "F.Vto en Congelación:"
+
+            self.fecha_vencimiento_str = fecha_vencimiento_congelacion
+
+            fecha_vencimiento_str = (
+                fecha_vencimiento_congelacion.strftime("%d/%m/%Y")
+                if fecha_vencimiento_congelacion
+                else "-"
+            )
+
+            dias_vencimiento = dias_cong
+
+        else:
+            etiqueta_vencimiento = "F.Vto en Refrigeración:"
+
+            self.fecha_vencimiento_str = fecha_vencimiento_refrigeracion
+
+            fecha_vencimiento_str = (
+                fecha_vencimiento_refrigeracion.strftime("%d/%m/%Y")
+                if fecha_vencimiento_refrigeracion
+                else "-"
+            )
+
+            dias_vencimiento = dias_ref
+
+        print(
+            f"VENCIMIENTO -> self: {self.fecha_vencimiento_str}, "
+            f"texto fecha de sacrificio check: {self.fecha_sacrificio}"
+        )
         datos = [
             [("PLU:", self.producto.get("cdgo_plu", "-")), ("Producto:", self.producto.get("nombre", "-"))],
             [("Especie:", self.especie), ("Empresa:", self.empresa)],
-            [("Fecha Empaque:", self.fecha_produccion)],
-            [("Fecha Beneficio:", fecha_sacrificio_str)],
-            [("Fecha Vence en Congelación:", self.fecha_sacrificio),("Días Vence:", self.fecha_sacrificio) ],
+            [("Fecha Empaque:", self.fecha_produccion.strftime("%d/%m/%Y"))],
+            [("Fecha Beneficio:", self.fecha_sacrificio.strftime("%d/%m/%Y"))],
+            [(etiqueta_vencimiento, fecha_vencimiento_str)],
+            [("Días Vence:", dias_vencimiento if dias_vencimiento is not None else "-")],
         ]
-
         if self.tpo_pza is not None and self.nombre_tipo_pieza:
             datos.append([("Tipo de pieza:", self.nombre_tipo_pieza)])
 
@@ -354,9 +412,6 @@ class FichaTecnica(QWidget):
         fila_miniaturas = QHBoxLayout()
         fila_miniaturas.setSpacing(12)
 
-        # Antes se leían de self.producto.get("imagen_2".."imagen_6"),
-        # que nunca llegaban ahí. Ahora salen de self.producto_completo,
-        # traído con ObtenerTipoPzaRepository.obtener_producto_completo.
         if self.producto_completo is not None:
             imagenes_extra = [
                 self.producto_completo.con_arch_2,
@@ -563,8 +618,6 @@ class FichaTecnica(QWidget):
 
     def _tipo_limpieza_elegido(self, boton):
         self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
-        print("Tipo de limpieza seleccionado:", boton.property("tpo_lmpza"))
-
     # ==============================================================
     # BÁSCULA - PESO (placeholder, sin hardware conectado todavía)
     # ==============================================================
@@ -625,15 +678,6 @@ class FichaTecnica(QWidget):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(8)
 
-        #titulo = QLabel("Datos adicionales")
-        #titulo.setStyleSheet("font-size: 15px; font-weight: bold; color: #115E67;")
-        #layout.addWidget(titulo)
-
-        #etiqueta_fecha = QLabel("Fecha de vencimiento:")
-        #etiqueta_fecha.setStyleSheet("color: #666; font-size: 13px;")
-        #layout.addWidget(etiqueta_fecha)
-
-
         layout.addStretch()
         return marco
 
@@ -650,39 +694,19 @@ class FichaTecnica(QWidget):
             producto=producto_para_etiqueta,
             lote=self.lote,
             fecha_produccion=self.fecha_produccion,
-            nombre_usuario=self.usuario,
+            nombre_usuario=self.usuario.nombre_usuario,
             cod_empresa=self.empresa,
             tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
-            fecha_sacrificio=self.fecha_sacrificio,
+            fecha_sacrificio= self.fecha_sacrificio,
             nom_impr_etiq = self.nom_impr_etiq,
-            
+            numEspecie = self.numEspecie,
+            fecha_vencimiento_str = self.fecha_vencimiento_str,
     )
-        """
-    def _guardar_peso(self):
-
-        datos = construir_datos_etiqueta(
-            #cdgo_plu=11
-            producto=self.producto_completo,        # o el objeto Producto que tengas
-            lote=self.lote,
-            fecha_produccion=self.fecha_produccion,
-            nombre_usuario=self.usuario,      # ajusta al atributo real de tu Usuario
-            #tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
-        )
-        #print(f"el nombre del usuario{self.producto}" )
-        #print(f"el nombre del usuario{self.producto_completo}" )
-        """
-        imprimir_etiqueta_frescas(datos, "ZDesigner GK420t (Copiar 1)")
-        # Placeholder: aquí se guardará el peso + fecha de vencimiento en la base de datos.
-        """
-        datos = {
-            "producto": self.producto.get("nombre"),
-            "cdgo_plu": self.producto.get("cdgo_plu"),
-            "lote": self.lote,
-            "peso": self.peso_actual,
-            "tipo_limpieza": self.tipo_limpieza_seleccionado,
-        }
-        print("Guardar peso:", datos)
-        """
+        print(
+        f"DESPUÉS DE CONSTRUIR ETIQUETA -> "
+        f"fecha vencimiento: {datos.fecha_sacrificio}"
+    )
+        imprimir_etiqueta_frescas(datos, "ZDesigner GK420t (Copiar 1)")    
     def _volver_a_seleccion_de_producto(self):
         self._app.mostrar_seleccion_sin_recargar()
     
