@@ -308,13 +308,11 @@ class FichaTecnica(QWidget):
             }
         """)
         resultado_sacrificio = ObtenerTipoLimpiezaRepository.obtener_fecha_sacrificio(self,self.lote, self.numEspecie)
-        fecha_sacrificio_str = (
-            resultado_sacrificio.scrfcio
-            if resultado_sacrificio and resultado_sacrificio.scrfcio
-            else "-"
-        )
+
         self.fecha_sacrificio = resultado_sacrificio.scrfcio if resultado_sacrificio else None
-        
+        self.nom_impr_etiq = resultado_sacrificio.nom_impr_etiq if resultado_sacrificio else None
+       
+    
         layout = QVBoxLayout(marco)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
@@ -354,15 +352,20 @@ class FichaTecnica(QWidget):
 
             dias_vencimiento = dias_ref
 
-        print(
-            f"VENCIMIENTO -> self: {self.fecha_vencimiento_str}, "
-            f"texto fecha de sacrificio check: {self.fecha_sacrificio}"
-        )
+
+        def formatear_fecha(fecha, formato="%d/%m/%Y", valor_defecto="N/A") -> str:
+            """Formatea una fecha de forma segura; si es None, devuelve un valor por defecto."""
+            if fecha is None:
+                return valor_defecto
+            return fecha.strftime(formato)
+        
+        
+        
         datos = [
             [("PLU:", self.producto.get("cdgo_plu", "-")), ("Producto:", self.producto.get("nombre", "-"))],
             [("Especie:", self.especie), ("Empresa:", self.empresa)],
             [("Fecha Empaque:", self.fecha_produccion.strftime("%d/%m/%Y"))],
-            [("Fecha Beneficio:", self.fecha_sacrificio.strftime("%d/%m/%Y"))],
+            [("Fecha Beneficio:", formatear_fecha(self.fecha_sacrificio))],
             [(etiqueta_vencimiento, fecha_vencimiento_str)],
             [("Días Vence:", dias_vencimiento if dias_vencimiento is not None else "-")],
         ]
