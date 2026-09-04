@@ -1,5 +1,4 @@
 import os
-import random
 import socket
 from dataclasses import dataclass
 from datetime import date
@@ -8,8 +7,6 @@ from typing import Optional
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QPixmap
-
-from models.database import obtener_conexion
 from repositories.empresa_repository import (
     obtener_ciudad_empresa_db,
     obtener_fabricado_empresa_db,
@@ -20,7 +17,7 @@ from repositories.consecutivo_repository import (
     ConsecutivoRepository,
 )
 from utils import fechas
-
+from services.bascula_service import bascula_service
 from .motor_impresion import (
     crear_impresora,
     crear_painter,
@@ -128,16 +125,6 @@ def crear_etiqueta_marca() -> Optional[QPixmap]:
 # DATOS AUXILIARES
 # ======================================================================
 
-def obtener_peso_neto(peso_bascula: Optional[float] = None) -> float:
-    """
-    Si se conecta la báscula real, usa su lectura.
-    Mientras tanto, genera un peso aleatorio para pruebas.
-    """
-    if peso_bascula is not None:
-        return round(float(peso_bascula), 3)
-
-    return round(random.uniform(0.5, 8.0), 3)
-
 
 def siguiente_consecutivo_etiqueta_canasta() -> int:
     params = ConsecutivoParametros(
@@ -173,9 +160,8 @@ def _generar_contenido_qr(
     plu_fmt = str(cdgo_plu).zfill(4)[-4:]
 
     if peso_neto_kg is not None:
-        entero = int(peso_neto_kg)
-        decimal = round((peso_neto_kg - entero) * 100)
-        peso_fmt = f"{entero:02d}0{decimal:02d}"
+        peso_redondeado = round(peso_neto_kg, 2)
+        peso_fmt = f"{peso_redondeado:05.2f}".replace(".", "0")
     else:
         peso_fmt = "0" * 5
 
@@ -258,6 +244,11 @@ def construir_datos_etiqueta(
         else ""
     )
 
+    # Obtener el peso una sola vez para usar exactamente el mismo valor
+    # tanto en el contenido del QR como en los datos de la etiqueta.
+    peso_neto_kg = bascula_service.obtener_ultimo_peso()
+    #peso_neto_kg = obtener_peso_neto(peso_bascula)
+    print(f"'numero de PESO NETO': {peso_neto_kg}")
     contenido_qr = _generar_contenido_qr(
         lote=lote,
         cdgo_plu=producto.cdgo_plu,
@@ -273,7 +264,7 @@ def construir_datos_etiqueta(
         descripcion=descripcion,
         lote=str(lote),
         nivel_limpieza=tipo_limpieza_seleccionado,
-        peso_neto_kg = obtener_peso_neto(peso_bascula),
+        peso_neto_kg=peso_neto_kg,
 
         fecha_fabricacion=fecha_produccion,
         fecha_sacrificio=fecha_sacrificio_str,
@@ -497,7 +488,7 @@ def imprimir_etiqueta_frescas(
         negrita_der=True,
         prop_izq=0.42,
     )
-
+    print(f"Peso Neto:{datos.peso_neto_kg:.2f}kg   ")
     y += 36
 
     # Fecha beneficio | Fecha de vencimiento.

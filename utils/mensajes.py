@@ -17,6 +17,9 @@ class MensajesGenerales:
     OPERACION_EXITOSA = "Operación realizada con éxito."
     CONFIRMAR_SALIR = "¿Está seguro que desea salir?"
 
+class MensajeVentanaFlujo:
+    ERROR_SELECCION = "Primero debes seleccionar el lote a trabajar."
+    ERROR_FECHA = "SELECCIONE LA FECHAAAA"
 
 # Función auxiliar opcional, para no repetir el patrón de QMessageBox en cada ventana
 def mostrar_error(parent, titulo: str, mensaje: str):
