@@ -20,6 +20,12 @@ from utils.ventana_utils import aplicar_tamano
 from repositories.imagen_repository import ImagenRepository, TAMANO_PAGINA
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from utils import fechas
+from collections import namedtuple
+
+CriterioFiltroRes = namedtuple(
+    "CriterioFiltroRes",
+    ["tpo_pza", "cdgo_espcie", "cdgo_plu", "cod_emprsa"],
+)
 
 
 # Cuántos botones de letra se muestran a la vez en el paginador.
@@ -224,6 +230,7 @@ class SeleccionDeProducto(QWidget):
         numEspecie,
         tpo_pza=None,
         nombre_tipo_pieza=None,
+        empresa,
     ):
         super().__init__(parent)
         self.usuario = usuario
@@ -234,6 +241,8 @@ class SeleccionDeProducto(QWidget):
         self.numEspecie = numEspecie
         self.tpo_pza = tpo_pza
         self.nombre_tipo_pieza = nombre_tipo_pieza
+        self.empresa = empresa
+        #self.peso_neto_kg = peso_neto_kg
 
 
         # ------------------------------------------------------------
@@ -245,7 +254,7 @@ class SeleccionDeProducto(QWidget):
 
         if self.tpo_pza is not None:
             self.repositorio = ObtenerTipoPzaRepository(self._obtener_conexion)
-            self._criterio_filtro = self.tpo_pza
+            self._criterio_filtro = self._obtener_criterio_filtro()
         else:
             self.repositorio = ImagenRepository(self._obtener_conexion)
             self._criterio_filtro = self.numEspecie
@@ -512,25 +521,9 @@ class SeleccionDeProducto(QWidget):
         if icono_buscar is not None:
             circulo_buscar.setPixmap(icono_buscar)
 
-        etiqueta = QLabel("Empresa")
-        etiqueta.setStyleSheet(f"color: {COLOR_PRIMARIO}; font-weight: 700; font-size: 13px;")
-
-        self.campo_empresa = QLineEdit()
-        self.campo_empresa.setValidator(QIntValidator(0, 999999, self))
-        self.campo_empresa.setPlaceholderText("N°")
-        self.campo_empresa.setStyleSheet(
-            f"""
-            QLineEdit {{
-                border: none;
-                border-left: 1px solid {COLOR_BORDE};
-                padding: 6px 12px;
-                font-size: 13px;
-            }}
-            """
-        )
+       
         layout.addWidget(circulo_buscar)
-        layout.addWidget(etiqueta)
-        layout.addWidget(self.campo_empresa, stretch=1)
+        #layout.addWidget(etiqueta)
 
         envoltorio = QWidget()
         envoltorio.setStyleSheet("background: transparent;")
@@ -619,8 +612,35 @@ class SeleccionDeProducto(QWidget):
     # Paginador alfabético — carga y navegación
     # ------------------------------------------------------------------
     def _cargar_paginador_alfabetico(self):
+        if self.tpo_pza is not None:
+            criterio = self._obtener_criterio_filtro()
+            print("tpo_pza:", criterio.tpo_pza)
+            print("cdgo_espcie:", criterio.cdgo_espcie)
+            print("cdgo_plu:", criterio.cdgo_plu)
+            print("cod_emprsa:", criterio.cod_emprsa)
+            
+            self._paginas_letras = self.repositorio.construir_paginas_letras(
+                criterio.cod_emprsa,
+                criterio.cdgo_espcie,
+                criterio.tpo_pza,
+            )
+        else:
+            self._paginas_letras = self.repositorio.construir_paginas_letras(
+                self._criterio_filtro
+            )
+        self._indice_pagina_actual = 0
+        self._indice_ventana = 0
+
+        if self._paginas_letras:
+            self._renderizar_botones_letras()
+            self._cargar_productos_de_pagina_actual()
+        else:
+            self._mostrar_mensaje_vacio()
+    """
+    def _cargar_paginador_alfabetico(self):
         self._paginas_letras = self.repositorio.construir_paginas_letras(
-            self._criterio_filtro
+            #self._criterio_filtro = 
+            self._obtener_criterio_filtro()
         )
         self._indice_pagina_actual = 0
         self._indice_ventana = 0
@@ -630,6 +650,7 @@ class SeleccionDeProducto(QWidget):
             self._cargar_productos_de_pagina_actual()
         else:
             self._mostrar_mensaje_vacio()
+    """
 
     def _renderizar_botones_letras(self):
         while self._layout_letras.count():
@@ -708,8 +729,17 @@ class SeleccionDeProducto(QWidget):
 
     def _cargar_productos_de_pagina_actual(self):
         pagina = self._paginas_letras[self._indice_pagina_actual]
+        #productos = self.repositorio.obtener_productos_por_letra(
+        #    self._criterio_filtro, pagina.letra, pagina.offset, TAMANO_PAGINA
+        #)
+        criterio = self._obtener_criterio_filtro()  # o self._criterio_filtro si ya está guardado
         productos = self.repositorio.obtener_productos_por_letra(
-            self._criterio_filtro, pagina.letra, pagina.offset, TAMANO_PAGINA
+            cod_emprsa=self.empresa,      # o de donde saques ese dato
+            cdgo_espcie=self.numEspecie,    # idem
+            tpo_pza=criterio.tpo_pza,   # si esto es lo que representa tpo_pza
+            letra=pagina.letra,
+            offset=pagina.offset,
+            tamano_pagina=TAMANO_PAGINA,
         )
         self._mostrar_productos(productos)
 
@@ -786,11 +816,23 @@ class SeleccionDeProducto(QWidget):
             lote=self._obtener_valor_lote(),
             tpo_pza=self.tpo_pza,
             nombre_tipo_pieza=self.nombre_tipo_pieza,
+            peso_neto_kg=0.0,
             fecha_sacrificio = None,
-            empresa=self.campo_empresa.text(),
+            empresa=self.empresa,
             fecha_vencimiento_str = None,
             
         )
+        
+    def _obtener_criterio_filtro(self):
+        if self.tpo_pza is not None:
+            return CriterioFiltroRes(
+                tpo_pza=self.tpo_pza,
+                cdgo_espcie=self.numEspecie,
+                cdgo_plu=getattr(self, "campo_filtro_plu", None) and self.campo_filtro_plu.text().strip() or None,
+                cod_emprsa=getattr(self, "empresa", None) and self.empresa.strip() or None,
+            )
+        
+        return self._criterio_filtro
 
     def _volver_a_principal(self):
         self._app.mostrar_principal()

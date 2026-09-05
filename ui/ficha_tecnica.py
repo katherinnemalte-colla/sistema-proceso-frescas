@@ -12,7 +12,10 @@ from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
 from utils import fechas
 from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas
-
+from services.bascula_service import bascula_service
+import webbrowser
+import tempfile
+from pathlib import Path
 ANCHO_CONTENIDO = 1150
 COLOR_PRIMARIO = "#1a6b6b"
 COLOR_PRIMARIO_OSCURO = "#134f4f"
@@ -30,6 +33,7 @@ class FichaTecnica(QWidget):
         *,
         tpo_pza=None,
         nombre_tipo_pieza=None,
+        peso_neto_kg: Optional[float],
         fecha_sacrificio,
         nom_impr_etiq=None,
         empresa,
@@ -49,7 +53,7 @@ class FichaTecnica(QWidget):
         self.nombre_tipo_pieza = nombre_tipo_pieza
 
         self.seleccion_de_producto = None
-        self.peso_actual = 0.000  # placeholder: aquí se conectará la báscula real
+        self.peso_neto_kg = bascula_service.obtener_peso_neto()
         self.fecha_sacrificio = fechas._asegurar_date(fecha_sacrificio)
         self.nom_impr_etiq = nom_impr_etiq
         self.empresa = empresa
@@ -65,6 +69,8 @@ class FichaTecnica(QWidget):
         if self.tpo_pza is not None:
             repositorio_imagenes = ObtenerTipoPzaRepository(self._obtener_conexion)
             self.producto_completo = repositorio_imagenes.obtener_producto_completo(
+                self.empresa,
+                self.numEspecie,
                 self.tpo_pza,
                 str(self.producto.get("cdgo_plu", "")),
             )
@@ -643,7 +649,7 @@ class FichaTecnica(QWidget):
         titulo.setStyleSheet("font-size: 15px; font-weight: bold; color: #115E67;")
         layout.addWidget(titulo)
 
-        self.etiqueta_peso = QLabel(f"{self.peso_actual:.3f}")
+        self.etiqueta_peso = QLabel(f"{self.peso_neto_kg:.3f}")
         self.etiqueta_peso.setAlignment(Qt.AlignCenter)
         self.etiqueta_peso.setStyleSheet("""
             background-color: #E8F0EF;
@@ -656,7 +662,7 @@ class FichaTecnica(QWidget):
         """)
         layout.addWidget(self.etiqueta_peso)
 
-        self.etiqueta_peso_neto = QLabel(f"Peso neto        {self.peso_actual:.3f} kg")
+        self.etiqueta_peso_neto = QLabel(f"Peso neto        {self.peso_neto_kg:.3f} kg")
         self.etiqueta_peso_neto.setStyleSheet("color: #444; font-size: 13px;")
         layout.addWidget(self.etiqueta_peso_neto)
 
@@ -671,7 +677,7 @@ class FichaTecnica(QWidget):
         marco = QFrame()
         marco.setStyleSheet("""
             QFrame {
-                background-color: white;
+                background-color: black;
                 border: 1px solid #D9E2E4;
                 border-radius: 12px;
             }
@@ -700,15 +706,13 @@ class FichaTecnica(QWidget):
             nombre_usuario=self.usuario.nombre_usuario,
             cod_empresa=self.empresa,
             tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
+            peso_bascula = self.peso_neto_kg,
             fecha_sacrificio= self.fecha_sacrificio,
             nom_impr_etiq = self.nom_impr_etiq,
             numEspecie = self.numEspecie,
             fecha_vencimiento_str = self.fecha_vencimiento_str,
     )
-        print(
-        f"DESPUÉS DE CONSTRUIR ETIQUETA -> "
-        f"fecha vencimiento: {datos.fecha_sacrificio}"
-    )
+        
         imprimir_etiqueta_frescas(datos, "ZDesigner GK420t (Copiar 1)")    
     def _volver_a_seleccion_de_producto(self):
         self._app.mostrar_seleccion_sin_recargar()
