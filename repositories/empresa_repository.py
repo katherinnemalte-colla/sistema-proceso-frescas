@@ -49,3 +49,6 @@ def obtener_ciudad_empresa_db() -> Optional[str]:
 
 def obtener_fabricado_empresa_db() -> Optional[str]:
     return _consultar_valor_basicas(nombr_grup="ETIQUETA_CABECERA",eleme_grup="ETIQUETA_EMPRESA")
+
+def obtener_fabricado_empresa_direccion_db() -> Optional[str]:
+    return _consultar_valor_basicas(nombr_grup="ETIQUETA_CABECERA",eleme_grup="ETIQUETA_DIRECCION")

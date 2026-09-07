@@ -18,9 +18,9 @@ class ObtenerLoteFechaRepository:
                 ON a.espcie = b.espcie
             WHERE  a.fcha_prdccion = ?
               AND a.cntro_prcso = 1
-              AND a.tpo_lte = 3
+              AND a.tpo_lte = 1
               AND a.estdo = 0
-              AND a.estdo_pt = 0
+              --AND a.estdo_pt = 0
             ORDER BY a.nmro_lte
         """
 
@@ -41,9 +41,7 @@ class ObtenerLoteFechaRepository:
 
                 lote = Lotes_produccion(
                     lote=str(fila.LOTE),
-                    fecha_produccion=str(
-                        fila.FECHA_PRODUCCION
-                    )
+                    fecha_produccion = fila.FECHA_PRODUCCION
                 )
 
                 lotes.append(lote)
@@ -71,9 +69,9 @@ class ObtenerLoteFechaRepository:
                 ON a.espcie = b.espcie
             WHERE a.fcha_prdccion = ?
               AND a.cntro_prcso = 1
-              AND a.tpo_lte = 3
+              AND a.tpo_lte = 1
               AND a.estdo = 0
-              AND a.estdo_pt = 0
+              --AND a.estdo_pt = 0
               AND a.espcie = ?
             ORDER BY a.nmro_lte
         """
@@ -96,10 +94,8 @@ class ObtenerLoteFechaRepository:
 
                 lote = Lotes_produccion(
                     lote=str(fila.LOTE),
-                    fecha_produccion=str(
-                        fila.FECHA_PRODUCCION
-                    ),
-                    numEspecie=str(
+                    fecha_produccion=fila.FECHA_PRODUCCION,
+                    numEspecie=int(
                         fila.NUM_ESPECIE
                     ),
                     especie=str(

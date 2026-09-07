@@ -6,11 +6,12 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QFont, QFontDatabase, QPixmap
+from PySide6.QtGui import QFont, QPixmap
 from repositories.empresa_repository import (
     obtener_ciudad_empresa_db,
     obtener_fabricado_empresa_db,
     obtener_telefono_empresa_db,
+    obtener_fabricado_empresa_direccion_db
 )
 from repositories.consecutivo_repository import (
     ConsecutivoParametros,
@@ -43,14 +44,11 @@ QR_SIZE = 169
 SEPARACION_QR = 18
 GROSOR_LINEA = 5
 
-FABRICANTE_DIRECCION = "Cra. 126A #17-90 Int. 10"
-
 TEMPERATURA_MINIMA_C = 0
 TEMPERATURA_MAXIMA_C = 4
 RECOMENDACION_CONSERVACION = "Mantengase Refrigerado entre 0°C y 4°C"
 RECOMENDACION_USO = "consumase bien cocido a temperatura superior de 70°C"
 
-NOMBRE_MARCA_DEFAULT = "Cialtis."
 CODIGO_PROCESO_DEFAULT = socket.gethostname()
 
 RUTA_ICONOS = os.path.join("assets", "icons")
@@ -90,34 +88,8 @@ def _cargar_pixmap(nombre_archivo: str) -> Optional[QPixmap]:
     return pixmap
 
 
-def obtener_nombre_empresa() -> str:
-    """
-    Devuelve el nombre de la marca con la fuente Recoleta como respaldo.
-    """
-    ruta_fuente = _ruta_fuente("Recoleta.otf")
-
-    font_id = QFontDatabase.addApplicationFont(str(ruta_fuente))
-    familias = QFontDatabase.applicationFontFamilies(font_id)
-
-    nombre_familia = next(
-        (f for f in familias if "demo" not in f.lower()),
-        familias[0] if familias else "Arial",
-    )
-
-    return (
-        f'<span style="font-family:\'{nombre_familia}\'; font-size:20px;">'
-        f"{NOMBRE_MARCA_DEFAULT}"
-        f"</span>"
-    )
-
-
 def crear_etiqueta_marca() -> Optional[QPixmap]:
-    """
-    Carga únicamente la imagen de la marca.
 
-    No devuelve QLabel porque la etiqueta se genera directamente con
-    QPainter. El QPixmap se escala al tamaño adecuado al imprimir.
-    """
     return _cargar_pixmap("logo_marca.png")
 
 
@@ -247,7 +219,6 @@ def construir_datos_etiqueta(
     # Obtener el peso una sola vez para usar exactamente el mismo valor
     # tanto en el contenido del QR como en los datos de la etiqueta.
     peso_neto_kg = bascula_service.obtener_ultimo_peso()
-    #peso_neto_kg = obtener_peso_neto(peso_bascula)
     print(f"'numero de PESO NETO': {peso_neto_kg}")
     contenido_qr = _generar_contenido_qr(
         lote=lote,
@@ -273,7 +244,7 @@ def construir_datos_etiqueta(
         numEspecie=numEspecie,
 
         fabricante_nombre=obtener_fabricado_empresa_db(),
-        fabricante_direccion=FABRICANTE_DIRECCION,
+        fabricante_direccion=obtener_fabricado_empresa_direccion_db(),
         fabricante_ciudad=obtener_ciudad_empresa_db(),
         fabricante_telefono=obtener_telefono_empresa_db(),
 
