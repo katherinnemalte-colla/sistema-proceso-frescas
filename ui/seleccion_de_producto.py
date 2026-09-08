@@ -20,6 +20,7 @@ from utils.ventana_utils import aplicar_tamano
 from repositories.imagen_repository import ImagenRepository, TAMANO_PAGINA
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from utils import fechas
+from utils.colores import Colores
 from collections import namedtuple
 
 CriterioFiltroRes = namedtuple(
@@ -32,7 +33,7 @@ CriterioFiltroRes = namedtuple(
 BOTONES_LETRA_VISIBLES = 19
 
 # Columnas de la grilla de productos.
-COLUMNAS_GRILLA = 6
+COLUMNAS_GRILLA = 4
 
 # --- Paleta ---------------------------------------------------------------
 COLOR_PRIMARIO = "#1a6b6b"
@@ -116,11 +117,11 @@ class ProductoWidget(QFrame):
             f"""
             #tarjetaProducto {{
                 background: white;
-                border: 1px solid {COLOR_BORDE};
+                border: 1px solid {Colores.BORDE};
                 border-radius: 14px;
             }}
             #tarjetaProducto:hover {{
-                border: 1px solid {COLOR_PRIMARIO};
+                border: 1px solid {Colores.PRIMARIO};
             }}
             """
         )
@@ -441,7 +442,6 @@ class SeleccionDeProducto(QWidget):
         layout.setSpacing(12)
 
         layout.addWidget(self._crear_filtro())
-        layout.addWidget(self._crear_filtro_empresa())
 
         return contenedor
     
@@ -498,39 +498,6 @@ class SeleccionDeProducto(QWidget):
         layout_envoltorio.addWidget(contenedor)
         return envoltorio
 
-
-# o si usas PyQt: from PyQt5.QtGui import QIntValidator
-
-    def _crear_filtro_empresa(self):
-        contenedor = QFrame()
-        contenedor.setStyleSheet(
-            f"background: white; border: 1px solid {COLOR_BORDE}; border-radius: 12px;"
-        )
-        _aplicar_sombra(contenedor, blur=14, dy=2, alfa=15)
-
-        layout = QHBoxLayout(contenedor)
-        layout.setContentsMargins(10, 8, 16, 8)
-        layout.setSpacing(12)
-        circulo_buscar = QLabel()
-        circulo_buscar.setFixedSize(36, 36)
-        circulo_buscar.setAlignment(Qt.AlignCenter)
-        circulo_buscar.setStyleSheet(
-            f"background: {COLOR_PRIMARIO}; border-radius: 18px;"
-        )
-        icono_buscar = _icono_pixmap("empresa.png", 18)
-        if icono_buscar is not None:
-            circulo_buscar.setPixmap(icono_buscar)
-
-       
-        layout.addWidget(circulo_buscar)
-        #layout.addWidget(etiqueta)
-
-        envoltorio = QWidget()
-        envoltorio.setStyleSheet("background: transparent;")
-        layout_envoltorio = QVBoxLayout(envoltorio)
-        layout_envoltorio.setContentsMargins(24, 8, 24, 8)
-        layout_envoltorio.addWidget(contenedor)
-        return envoltorio
     # ------------------------------------------------------------------
     # Título de sección con el mismo adorno de la cabecera
     # ------------------------------------------------------------------
@@ -754,8 +721,12 @@ class SeleccionDeProducto(QWidget):
             return
 
         self._layout_paginador_visible(False)
+        criterio = self._obtener_criterio_filtro()
         productos = self.repositorio.buscar_productos_por_plu(
-            self._criterio_filtro, texto
+            tpo_pza=criterio.tpo_pza,
+            cdgo_espcie=self.numEspecie,    # idem
+            texto_plu=texto,
+            cod_emprsa=self.empresa
         )
         self._mostrar_productos(productos)
 
@@ -828,8 +799,11 @@ class SeleccionDeProducto(QWidget):
             return CriterioFiltroRes(
                 tpo_pza=self.tpo_pza,
                 cdgo_espcie=self.numEspecie,
-                cdgo_plu=getattr(self, "campo_filtro_plu", None) and self.campo_filtro_plu.text().strip() or None,
-                cod_emprsa=getattr(self, "empresa", None) and self.empresa.strip() or None,
+                cdgo_plu=getattr(self, "campo_filtro_plu", None)
+                and self.campo_filtro_plu.text().strip()
+                or None,
+                cod_emprsa=self.empresa.strip() if self.empresa else None,
+
             )
         
         return self._criterio_filtro

@@ -23,14 +23,11 @@ from models.usuarios import Usuario
 from repositories.obtener_lote_fecha_repository import (
     ObtenerLoteFechaRepository
 )
-from ui.seleccion_de_producto import SeleccionDeProducto
-from ui.ficha_tecnica import FichaTecnica 
-
-
-# ==============================================================
-# RUTA DE ICONOS
-# ==============================================================
-
+from utils.colores import Colores
+from utils.mensajes import MensajeVentanaFlujo
+from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit
+from PySide6.QtCore import QDate
+from PySide6.QtGui import QIntValidator
 RUTA_ICONOS = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "assets",
@@ -42,13 +39,7 @@ ESPECIES = [
     (2, "CERDO", "cerdo.png", "#E75480"),
     (3, "TERNERA", "ternera.png", "#6D4C41"),
 ]
-
-# Solo la especie RES (vaca) tiene el paso adicional de
-# seleccionar tipo de pieza (DELANTERO/TRASERO).
 ID_ESPECIE_RES = 1
-
-# tpo_pza=1 -> DELANTEROS, tpo_pza=2 -> TRASEROS (según la tabla
-# tpo_pzas_espcies).
 TIPOS_PIEZA = [
     (1, "DELANTERO", "#1E6FD9"),
     (2, "TRASERO", "#1E9E5A"),
@@ -60,7 +51,7 @@ ANCHO_CONTENIDO_MIN = 380
 
 class VentanaPrincipal(QWidget):
 
-    def __init__(self, usuario: Usuario, obtener_conexion , app_ventana):
+    def __init__(self, usuario: Usuario, obtener_conexion, app_ventana):
         super().__init__()
         self.usuario = usuario
         self._obtener_conexion = obtener_conexion
@@ -235,10 +226,30 @@ class VentanaPrincipal(QWidget):
 
         columna_lote.addWidget(etiqueta_lote)
         columna_lote.addWidget(contenedor_lote)
+        
+                # --- Columna: empresa ---
+        columna_empresa = QVBoxLayout()
+        columna_empresa.setSpacing(6)
+
+        etiqueta_empresa = QLabel("Empresa")
+        etiqueta_empresa.setStyleSheet("font-size: 13px; color: #444;")
+
+        self.campo_empresa = QLineEdit()
+        self.campo_empresa.setPlaceholderText("Ingrese el número de empresa")
+        self.campo_empresa.setValidator(QIntValidator(0, 999999999, self))
+
+        contenedor_empresa = self._envolver_campo(
+            self.campo_empresa,
+            "empresa.png"
+        )
+
+        columna_empresa.addWidget(etiqueta_empresa)
+        columna_empresa.addWidget(contenedor_empresa)
+        
 
         fila_campos.addLayout(columna_fecha, 1)
         fila_campos.addLayout(columna_lote, 1)
-
+        fila_campos.addLayout(columna_empresa, 1)
         layout.addLayout(fila_campos)
 
         layout.addSpacing(6)
@@ -290,6 +301,10 @@ class VentanaPrincipal(QWidget):
         self.campo_fecha.dateChanged.connect(
             self._fecha_cambiada
         )
+        
+        self.campo_lote.currentIndexChanged.connect(
+        self._actualizar_estado_botones_especie
+        )
 
         # ==========================================================
         # CARGA INICIAL
@@ -310,7 +325,7 @@ class VentanaPrincipal(QWidget):
         pie.addStretch()
 
         boton_continuar = QPushButton(
-            "Continuar"
+            "Reiniciar"
         )
 
         boton_continuar.setMinimumSize(220, 46)
@@ -409,6 +424,31 @@ class VentanaPrincipal(QWidget):
             )
 
             fila_botones.addWidget(boton)
+
+        # Se agrega UNA sola vez, después del for, en la misma fila
+        boton_continuar = QPushButton("Reiniciar")
+        boton_continuar.setCursor(Qt.PointingHandCursor)
+        boton_continuar.setMinimumSize(220, 46)
+        boton_continuar.setMaximumWidth(320)
+        boton_continuar.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Fixed
+        )
+        boton_continuar.setStyleSheet("""
+            QPushButton {
+                background-color: #1E6FD9;
+                color: white;
+                font-size: 15px;
+                font-weight: bold;
+                border: none;
+                border-radius: 10px;
+            }
+            QPushButton:hover { background-color: #1A62BE; }
+            QPushButton:pressed { background-color: #164F9C; }
+        """)
+        boton_continuar.clicked.connect(self._continuar)
+
+        fila_botones.addWidget(boton_continuar)
 
         layout_panel.addLayout(fila_botones)
 
@@ -549,6 +589,40 @@ class VentanaPrincipal(QWidget):
         campo_fecha.setCalendarWidget(self._calendario)
 
     # ==============================================================
+    # VALIDACIONES
+    # ==============================================================
+
+    def validar_combo(self):
+        if self.campo_lote.currentIndex() <= 0:
+            QMessageBox.warning(
+                self,
+                "Error",
+                MensajeVentanaFlujo.ERROR_SELECCION
+            )
+            return False
+        return True
+
+    def validar_fecha(self):
+        if not self.campo_fecha.date().isValid():
+            QMessageBox.warning(
+                self,
+                "Error",
+                MensajeVentanaFlujo.ERROR_FECHA
+            )
+            return False
+        return True
+
+    def validar_especie(self, id_especie):
+        if not id_especie:
+            QMessageBox.warning(
+                self,
+                "Error",
+                MensajeVentanaFlujo.ERROR_SELECCION
+            )
+            return False
+        return True
+
+    # ==============================================================
     # SELECTOR DE ESPECIES
     # ==============================================================
 
@@ -618,15 +692,15 @@ class VentanaPrincipal(QWidget):
             )
 
             if os.path.isfile(ruta_icono):
-               pixmap = QPixmap(ruta_icono)
+                pixmap = QPixmap(ruta_icono)
 
-               if not pixmap.isNull():
-                pixmap = QIcon(ruta_icono).pixmap(
-                    QSize(90, 90)
-                )
-                imagen.setPixmap(pixmap)
-               else:
-                   print(f"no se pudo cargar la imagen: {ruta_icono}")
+                if not pixmap.isNull():
+                    pixmap = QIcon(ruta_icono).pixmap(
+                        QSize(90, 90)
+                    )
+                    imagen.setPixmap(pixmap)
+                else:
+                    print(f"no se pudo cargar la imagen: {ruta_icono}")
             else:
                 print(f"no existe la imagen {ruta_icono}")
 
@@ -647,8 +721,6 @@ class VentanaPrincipal(QWidget):
             # ------------------------------------------------------
             # BOTÓN "SELECCIONAR" (checkable, exclusividad manual)
             # ------------------------------------------------------
-
-
 
             boton = QPushButton("Seleccionar   ›")
 
@@ -758,6 +830,10 @@ class VentanaPrincipal(QWidget):
             self._resaltar_tarjeta(id_especie)
             self._ocultar_panel_tipo_pieza()
 
+            # Al deseleccionar, volvemos a cargar los lotes
+            # solo por fecha (sin filtro de especie).
+            self._cargar_lotes()
+
             return
 
         # ------------------------------------------------------------
@@ -788,7 +864,9 @@ class VentanaPrincipal(QWidget):
             self._ocultar_panel_tipo_pieza()
             self._avanzar_a_seleccion_producto(
                 id_especie,
-                nombre_especie
+                nombre_especie,
+                empresa = 0, tpo_pza = 0, nombre_tipo_pieza = None
+                
             )
 
     # ==============================================================
@@ -812,7 +890,6 @@ class VentanaPrincipal(QWidget):
             # cuando la especie seleccionada es RES.
             return
 
-
         print(f"Pieza seleccionada: {nombre_tipo_pieza}")
 
         self._avanzar_a_seleccion_producto(
@@ -820,6 +897,8 @@ class VentanaPrincipal(QWidget):
             self._nombre_especie_pendiente,
             tpo_pza=tpo_pza,
             nombre_tipo_pieza=nombre_tipo_pieza,
+            empresa=self.campo_empresa.text(),
+            
         )
 
     # ==============================================================
@@ -830,10 +909,15 @@ class VentanaPrincipal(QWidget):
         self,
         id_especie,
         nombre_especie,
+        empresa, 
         tpo_pza=None,
         nombre_tipo_pieza=None,
     ):
-
+        if not self.validar_fecha():
+            return
+        if not self.validar_especie(id_especie):
+            return
+        
         fecha = self.campo_fecha.date()
         fecha_bd = fecha.toString("yyyy/MM/dd")
         try:
@@ -860,7 +944,7 @@ class VentanaPrincipal(QWidget):
                 f"No se encontraron lotes para la especie \"{nombre_especie}\" "
                 f"en la fecha seleccionada."
             )
-            return
+            return 
 
         # --------------------------------------------------------------
         # tpo_pza / nombre_tipo_pieza / imagenes solo llegan con
@@ -874,39 +958,41 @@ class VentanaPrincipal(QWidget):
             especie=nombre_especie,
             numEspecie=id_especie,
             tpo_pza=tpo_pza,
+            empresa=empresa,
         )
-        
 
     # ==============================================================
     # FECHA CAMBIADA
     # ==============================================================
 
+    def _obtener_id_especie_seleccionada(self):
+        for boton in self.grupo_especies.buttons():
+            if boton.isChecked():
+                return boton.property("id_especie")
+        return None
+    
+    def _actualizar_estado_botones_especie(self):
+        """
+        Habilita los botones "Seleccionar" de las especies solo
+        cuando hay un lote válido elegido en campo_lote.
+        """
+        hay_lote_valido = self.campo_lote.currentData() is not None
+
+        for boton in self.grupo_especies.buttons():
+            boton.setEnabled(hay_lote_valido)
+
     def _fecha_cambiada(self, fecha):
         """
         Cuando cambia la fecha se actualiza inmediatamente
-        el listado de lotes.
+        el listado de lotes, manteniendo el filtro de especie
+        si ya había una seleccionada.
         """
 
-        # Si ya había una especie seleccionada,
-        # mantenemos ese filtro.
-        nombre_especie = self._obtener_nombre_especie()
+        id_especie = self._obtener_id_especie_seleccionada()
 
         self._cargar_lotes(
-            nombre_especie=nombre_especie
+            id_especie=id_especie
         )
-
-    # ==============================================================
-    # OBTENER NOMBRE DE ESPECIE ACTUAL
-    # ==============================================================
-
-    def _obtener_nombre_especie(self):
-
-        for boton in self.grupo_especies.buttons():
-            if boton.isChecked():
-                return boton.property("nombre_especie")
-
-        return None
-
 
     # ==============================================================
     # CARGAR LOTES
@@ -914,16 +1000,16 @@ class VentanaPrincipal(QWidget):
 
     def _cargar_lotes(
         self,
-        nombre_especie=None
+        id_especie=None
     ):
         """
         Obtiene los lotes según la fecha.
 
-        Si se proporciona nombre_especie:
-            fecha + especie
+        Si se proporciona id_especie:
+            fecha + especie -> obtener_lotes_por_especie(fecha, id_especie)
 
         Si no:
-            solamente fecha.
+            solamente fecha -> obtener_lotes_por_fecha(fecha)
         """
 
         # ----------------------------------------------------------
@@ -939,20 +1025,26 @@ class VentanaPrincipal(QWidget):
         try:
 
             # ------------------------------------------------------
-            # ESPECIE
+            # FECHA + ESPECIE
+            # ------------------------------------------------------
+            # obtener_lotes_por_especie requiere (fecha, num_especie).
+            # Antes solo se mandaba id_especie, y num_especie quedaba
+            # sin recibir valor -> TypeError "missing 1 required
+            # positional argument: num_especie".
             # ------------------------------------------------------
 
-            if nombre_especie:
+            if id_especie:
 
                 lotes = (
                     self.repository
                     .obtener_lotes_por_especie(
-                        nombre_especie
+                        fecha_bd,
+                        id_especie
                     )
                 )
 
             # ------------------------------------------------------
-            # FILTRO SOLO FECHA
+            # SOLO FECHA
             # ------------------------------------------------------
 
             else:
@@ -983,6 +1075,7 @@ class VentanaPrincipal(QWidget):
                 self.campo_lote.setCurrentIndex(
                     0
                 )
+                self._actualizar_estado_botones_especie()
 
                 return
 
@@ -1001,7 +1094,8 @@ class VentanaPrincipal(QWidget):
                     str(lote.lote),
                     lote
                 )
-
+                self._actualizar_estado_botones_especie()
+            
         except Exception as e:
 
             QMessageBox.critical(
@@ -1015,67 +1109,47 @@ class VentanaPrincipal(QWidget):
             self.campo_lote.addItem(
                 "Error al consultar lotes"
             )
+    def _reiniciar_formulario(self):
 
+        self.especie_seleccionada = None
+        self._nombre_especie_pendiente = None
+        self.campo_empresa.text() == None
+
+        for boton in self.grupo_especies.buttons():
+            boton.setChecked(False)
+
+        # Vuelve a pintar todas las tarjetas sin resaltado
+        self._resaltar_tarjeta(None)
+
+        # ------------------------------------------------------------
+        # PANEL DEL PIE
+        # ------------------------------------------------------------
+
+        self._ocultar_panel_tipo_pieza()
+
+        # ------------------------------------------------------------
+        # FECHA (esto dispara _fecha_cambiada -> _cargar_lotes)
+        # ------------------------------------------------------------
+
+        fecha_hoy = QDate.currentDate()
+
+        if self.campo_fecha.date() == fecha_hoy:
+            # Si ya está en la fecha de hoy, dateChanged no se
+            # dispara solo, así que forzamos la recarga manualmente.
+            self._cargar_lotes()
+        else:
+            self.campo_fecha.setDate(fecha_hoy)
+
+        # ------------------------------------------------------------
+        # BOTONES DE ESPECIE
+        # ------------------------------------------------------------
+        # _cargar_lotes ya llama a _actualizar_estado_botones_especie,
+        # pero lo dejamos explícito por seguridad.
+
+        self._actualizar_estado_botones_especie()
     # ==============================================================
     # CONTINUAR
     # ==============================================================
-
     def _continuar(self):
 
-        # ----------------------------------------------------------
-        # OBTENER OBJETO LOTE
-        # ----------------------------------------------------------
-
-        lote_seleccionado = (
-            self.campo_lote.currentData()
-        )
-
-        # ----------------------------------------------------------
-        # VALIDAR LOTE
-        # ----------------------------------------------------------
-
-        if lote_seleccionado is None:
-
-            QMessageBox.warning(
-                self,
-                "Lote",
-                "Seleccione un lote para continuar."
-            )
-
-            return
-
-        # ----------------------------------------------------------
-        # VALIDAR ESPECIE
-        # ----------------------------------------------------------
-
-        if self.especie_seleccionada is None:
-
-            QMessageBox.warning(
-                self,
-                "Especie",
-                "Seleccione una especie para continuar."
-            )
-
-            return
-
-        # ----------------------------------------------------------
-        # DATOS DEL LOTE
-        # ----------------------------------------------------------
-
-        datos_lote = {
-            "lote": lote_seleccionado.lote,
-            "fecha_produccion": self.campo_fecha.date().toString(
-                "yyyy-MM-dd"
-            ),
-            "numEspecie": lote_seleccionado.numEspecie,
-            "especie": lote_seleccionado.especie,
-        }
-
-        # ----------------------------------------------------------
-        # TEMPORAL
-        # ----------------------------------------------------------
-
-        print(
-            "Datos seleccionados:",
-            datos_lote
-        )
+        self._reiniciar_formulario()
