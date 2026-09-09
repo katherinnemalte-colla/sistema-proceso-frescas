@@ -38,7 +38,7 @@ ANCHO = 1000
 ALTO = 450
 
 # Margen general de la etiqueta.
-MARGEN = 34
+MARGEN = 44
 
 QR_SIZE = 169
 SEPARACION_QR = 18

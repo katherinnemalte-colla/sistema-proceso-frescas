@@ -17,11 +17,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QIntValidator
 from utils.ventana_utils import aplicar_tamano
-from repositories.imagen_repository import ImagenRepository, TAMANO_PAGINA
-from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
+from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository, TAMANO_PAGINA
 from utils import fechas
 from utils.colores import Colores
 from collections import namedtuple
+from utils import mensajes
 
 CriterioFiltroRes = namedtuple(
     "CriterioFiltroRes",
@@ -33,7 +33,7 @@ CriterioFiltroRes = namedtuple(
 BOTONES_LETRA_VISIBLES = 19
 
 # Columnas de la grilla de productos.
-COLUMNAS_GRILLA = 4
+COLUMNAS_GRILLA = 3
 
 # --- Paleta ---------------------------------------------------------------
 COLOR_PRIMARIO = "#1a6b6b"
@@ -257,8 +257,7 @@ class SeleccionDeProducto(QWidget):
             self.repositorio = ObtenerTipoPzaRepository(self._obtener_conexion)
             self._criterio_filtro = self._obtener_criterio_filtro()
         else:
-            self.repositorio = ImagenRepository(self._obtener_conexion)
-            self._criterio_filtro = self.numEspecie
+            mensajes.mostrar_error("error", "sin datos")
 
         # Estado del paginador alfabético
         self._paginas_letras = []      # list[PaginaLetra]
@@ -579,36 +578,15 @@ class SeleccionDeProducto(QWidget):
     # Paginador alfabético — carga y navegación
     # ------------------------------------------------------------------
     def _cargar_paginador_alfabetico(self):
-        if self.tpo_pza is not None:
-            criterio = self._obtener_criterio_filtro()
-            print("tpo_pza:", criterio.tpo_pza)
-            print("cdgo_espcie:", criterio.cdgo_espcie)
-            print("cdgo_plu:", criterio.cdgo_plu)
-            print("cod_emprsa:", criterio.cod_emprsa)
-            
-            self._paginas_letras = self.repositorio.construir_paginas_letras(
-                criterio.cod_emprsa,
-                criterio.cdgo_espcie,
-                criterio.tpo_pza,
-            )
-        else:
-            self._paginas_letras = self.repositorio.construir_paginas_letras(
-                self._criterio_filtro
-            )
-        self._indice_pagina_actual = 0
-        self._indice_ventana = 0
+        criterio = self._obtener_criterio_filtro()
 
-        if self._paginas_letras:
-            self._renderizar_botones_letras()
-            self._cargar_productos_de_pagina_actual()
-        else:
-            self._mostrar_mensaje_vacio()
-    """
-    def _cargar_paginador_alfabetico(self):
-        self._paginas_letras = self.repositorio.construir_paginas_letras(
-            #self._criterio_filtro = 
-            self._obtener_criterio_filtro()
+        self._paginas_letras = self.repositorio.construir_paginas(
+            cod_emprsa=criterio.cod_emprsa,
+            cdgo_espcie=criterio.cdgo_espcie,
+            tpo_pza=criterio.tpo_pza,
+            tamano_pagina=TAMANO_PAGINA,
         )
+
         self._indice_pagina_actual = 0
         self._indice_ventana = 0
 
@@ -617,7 +595,6 @@ class SeleccionDeProducto(QWidget):
             self._cargar_productos_de_pagina_actual()
         else:
             self._mostrar_mensaje_vacio()
-    """
 
     def _renderizar_botones_letras(self):
         while self._layout_letras.count():
@@ -630,8 +607,14 @@ class SeleccionDeProducto(QWidget):
         fin = min(inicio + BOTONES_LETRA_VISIBLES, len(self._paginas_letras))
 
         for indice in range(inicio, fin):
-            pagina_letra = self._paginas_letras[indice]
-            boton = QPushButton(pagina_letra.letra)
+            pagina_grupo = self._paginas_letras[indice]
+
+            if len(pagina_grupo.letras) == 1:
+                texto_boton = pagina_grupo.letras[0]
+            else:
+                texto_boton = f"{pagina_grupo.letras[0]}-{pagina_grupo.letras[-1]}"
+
+            boton = QPushButton(texto_boton)
             boton.setFixedSize(34, 34)
             es_seleccionado = indice == self._indice_pagina_actual
             boton.setStyleSheet(self._estilo_boton_letra(es_seleccionado))
@@ -696,18 +679,7 @@ class SeleccionDeProducto(QWidget):
 
     def _cargar_productos_de_pagina_actual(self):
         pagina = self._paginas_letras[self._indice_pagina_actual]
-        #productos = self.repositorio.obtener_productos_por_letra(
-        #    self._criterio_filtro, pagina.letra, pagina.offset, TAMANO_PAGINA
-        #)
-        criterio = self._obtener_criterio_filtro()  # o self._criterio_filtro si ya está guardado
-        productos = self.repositorio.obtener_productos_por_letra(
-            cod_emprsa=self.empresa,      # o de donde saques ese dato
-            cdgo_espcie=self.numEspecie,    # idem
-            tpo_pza=criterio.tpo_pza,   # si esto es lo que representa tpo_pza
-            letra=pagina.letra,
-            offset=pagina.offset,
-            tamano_pagina=TAMANO_PAGINA,
-        )
+        productos = pagina.productos
         self._mostrar_productos(productos)
 
     # ------------------------------------------------------------------

@@ -1,16 +1,3 @@
-"""
-obtener_tipo_pza_repository.py
-
-Repositorio para el flujo de RES (vaca): en vez de filtrar por especie
-(como hace ImagenRepository con cdgo_espcie), filtra por tipo de pieza
-(tpo_pza: 1 = DELANTERO, 2 = TRASERO).
-
-Expone la MISMA interfaz pública que ImagenRepository (mismos nombres
-de método, mismo dataclass PaginaLetra) para que SeleccionDeProducto
-pueda usar cualquiera de los dos repositorios de forma intercambiable,
-solo cambiando qué instancia y qué valor de filtro le pasa.
-"""
-
 import os
 from dataclasses import dataclass
 from typing import List, Optional
@@ -25,7 +12,7 @@ DB_PRODUCTOS = os.getenv("DB_DATABASE")
 DB_IMAGENES = os.getenv("DB_DATABASE_1")
 
 # Cantidad de productos por página dentro de una misma letra.
-TAMANO_PAGINA = 12
+TAMANO_PAGINA = 10
 
 
 @dataclass
@@ -41,6 +28,12 @@ class Producto:
     cdgo_plu: str
     nom_prog: str
     imagen_principal: Optional[bytes]
+    letra: str = ""   # <-- nuevo campo, con default para no romper otros métodos que ya crean Producto
+    
+@dataclass
+class PaginaGrupo:
+    letras: List[str]           # letras que aparecen en este grupo, en orden de aparición
+    productos: List[Producto]   # productos ya cargados, listos para pintar sin otra consulta
 
 
 @dataclass
@@ -90,7 +83,7 @@ class ObtenerTipoPzaRepository:
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
 
-            INNER JOIN [{DB_IMAGENES}].dbo.imagenes img
+            LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
 
             WHERE a.tpo_pza = ?
@@ -147,7 +140,7 @@ class ObtenerTipoPzaRepository:
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
-            INNER JOIN [{DB_IMAGENES}].dbo.imagenes img
+            LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
             WHERE a.tpo_pza = ?
               AND p.cntro_prcso = 1
@@ -183,6 +176,39 @@ class ObtenerTipoPzaRepository:
     # ------------------------------------------------------------
     # CONSTRUIR PÁGINAS POR LETRA
     # ------------------------------------------------------------
+    def construir_paginas(
+        self,
+        cod_emprsa: Optional[int],
+        cdgo_espcie: int,
+        tpo_pza: int,
+        tamano_pagina: int = TAMANO_PAGINA,
+    ) -> List[PaginaGrupo]:
+
+        productos = self.obtener_todos_los_productos(
+            cod_emprsa,
+            cdgo_espcie,
+            tpo_pza,
+        )
+
+        paginas: List[PaginaGrupo] = []
+        pagina_actual: List[Producto] = []
+        letras_actuales: List[str] = []
+
+        for producto in productos:
+            pagina_actual.append(producto)
+            if producto.letra not in letras_actuales:
+                letras_actuales.append(producto.letra)
+
+            if len(pagina_actual) == tamano_pagina:
+                paginas.append(PaginaGrupo(letras=letras_actuales, productos=pagina_actual))
+                pagina_actual = []
+                letras_actuales = []
+
+        if pagina_actual:  # último grupo, aunque no llegue a 20
+            paginas.append(PaginaGrupo(letras=letras_actuales, productos=pagina_actual))
+
+        return paginas
+    
     def construir_paginas_letras(
         self,
         cod_emprsa: int,
@@ -221,6 +247,71 @@ class ObtenerTipoPzaRepository:
     # ------------------------------------------------------------
     # PRODUCTOS POR LETRA — PAGINADO
     # ------------------------------------------------------------
+    def obtener_todos_los_productos(
+        self,
+        cod_emprsa: Optional[int],
+        cdgo_espcie: int,
+        tpo_pza: int,
+    ) -> List[Producto]:
+
+        consulta = f"""
+            WITH pagina AS (
+                SELECT DISTINCT
+                    p.cdgo_plu,
+                    p.nmbre_crto,
+                    LEFT(p.nmbre_crto, 1) AS letra
+                FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
+                INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
+                    ON p.tpo_pza = a.tpo_pza
+                WHERE a.tpo_pza = ?
+                AND p.cntro_prcso = 1
+                AND p.cdgo_espcie = ?
+                AND p.estdo = 0
+                AND EXISTS (
+                    SELECT 1
+                    FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli ft
+                    WHERE ft.cdgo_plu = p.cdgo_plu
+                        AND (? IS NULL OR ? = 1 OR ft.cod_emprsa = ?)
+                )
+            )
+            SELECT
+                pagina.cdgo_plu,
+                pagina.nmbre_crto AS nom_prog,
+                pagina.letra,
+                CAST(
+                    CAST(img.con_arch AS VARCHAR(MAX))
+                    AS VARBINARY(MAX)
+                ) AS con_arch
+            FROM pagina
+            LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
+                ON img.referencia = CAST(pagina.cdgo_plu AS VARCHAR(50))
+                AND img.nom_prog = 'productos'
+            ORDER BY pagina.nmbre_crto
+        """
+
+        with self._obtener_conexion() as conexion:
+            cursor = conexion.cursor()
+            cursor.execute(
+                consulta,
+                (
+                    tpo_pza,
+                    cdgo_espcie,
+                    cod_emprsa,
+                    cod_emprsa,
+                    cod_emprsa,
+                ),
+            )
+            return [
+                Producto(
+                    cdgo_plu=fila[0],
+                    nom_prog=fila[1],
+                    imagen_principal=fila[3],
+                    letra=fila[2],
+                )
+                for fila in cursor.fetchall()
+            ]
+            
+            
     def obtener_productos_por_letra(
         self,
         cod_emprsa: Optional[int],
@@ -264,7 +355,7 @@ class ObtenerTipoPzaRepository:
                     AS VARBINARY(MAX)
                 ) AS con_arch
             FROM pagina
-            INNER JOIN [{DB_IMAGENES}].dbo.imagenes img
+            LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia = CAST(pagina.cdgo_plu AS VARCHAR(50))
                 AND img.nom_prog = 'productos'
             ORDER BY pagina.nmbre_crto
@@ -318,7 +409,7 @@ class ObtenerTipoPzaRepository:
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
-            INNER JOIN [{DB_IMAGENES}].dbo.imagenes img
+            LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia =
                    CAST(p.cdgo_plu AS VARCHAR(50))
             WHERE a.tpo_pza = ?
@@ -387,7 +478,7 @@ class ObtenerTipoPzaRepository:
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
-            INNER JOIN [{DB_IMAGENES}].dbo.imagenes img
+            LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia =
                    CAST(p.cdgo_plu AS VARCHAR(50))
             WHERE a.tpo_pza = ?
