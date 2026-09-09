@@ -33,17 +33,24 @@ RUTA_ICONOS = os.path.join(
     "assets",
     "icons"
 )
-
+TIPOS_PIEZA_POR_ESPECIE = {
+    1: [  # RES
+        (1, "DELANTERO", "#FF2626"),
+        (2, "TRASERO", "#1E9E5A"),
+    ],
+    2: [  # CERDO
+        (3, "CANAL CERDO", "#E75480"),
+    ],
+    3: [  # TERNERA
+        (4, "CANAL TERNERA", "#6D4C41"),
+    ],
+} 
 ESPECIES = [
     (1, "RES", "res.png", "#C0392B"),
     (2, "CERDO", "cerdo.png", "#E75480"),
     (3, "TERNERA", "ternera.png", "#6D4C41"),
 ]
 ID_ESPECIE_RES = 1
-TIPOS_PIEZA = [
-    (1, "DELANTERO", "#1E6FD9"),
-    (2, "TRASERO", "#1E9E5A"),
-]
 
 ANCHO_CONTENIDO_MAX = 760
 ANCHO_CONTENIDO_MIN = 380
@@ -323,19 +330,17 @@ class VentanaPrincipal(QWidget):
         pie = QHBoxLayout(pagina)
         pie.setContentsMargins(0, 0, 0, 0)
         pie.addStretch()
-
-        boton_continuar = QPushButton(
-            "Reiniciar"
-        )
-
-        boton_continuar.setMinimumSize(220, 46)
-        boton_continuar.setMaximumWidth(320)
-        boton_continuar.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Fixed
-        )
-
-        boton_continuar.setStyleSheet("""
+        pie.addWidget(self._crear_boton_reiniciar())
+        pie.addStretch()
+        return pagina
+    
+    def _crear_boton_reiniciar(self) -> QPushButton:
+        boton = QPushButton("Reiniciar")
+        boton.setCursor(Qt.PointingHandCursor)
+        boton.setMinimumSize(220, 46)
+        boton.setMaximumWidth(320)
+        boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        boton.setStyleSheet("""
             QPushButton {
                 background-color: #1E6FD9;
                 color: white;
@@ -344,62 +349,59 @@ class VentanaPrincipal(QWidget):
                 border: none;
                 border-radius: 10px;
             }
-
-            QPushButton:hover {
-                background-color: #1A62BE;
-            }
-
-            QPushButton:pressed {
-                background-color: #164F9C;
-            }
+            QPushButton:hover { background-color: #1A62BE; }
+            QPushButton:pressed { background-color: #164F9C; }
         """)
-
-        boton_continuar.clicked.connect(
+        boton.clicked.connect(
             self._continuar
         )
+        return boton
 
-        pie.addWidget(
-            boton_continuar
-        )
 
-        pie.addStretch()
-
-        return pagina
 
     # ==============================================================
     # PÁGINA: TIPO DE PIEZA (DELANTERO / TRASERO) - solo RES
     # ==============================================================
-
     def _crear_pagina_tipo_pieza(self) -> QWidget:
-
         pagina = QWidget()
-
         layout_panel = QVBoxLayout(pagina)
         layout_panel.setContentsMargins(0, 0, 0, 0)
         layout_panel.setSpacing(8)
 
-        etiqueta = QLabel("Seleccione la parte del animal")
-        etiqueta.setAlignment(Qt.AlignCenter)
-        etiqueta.setStyleSheet(
+        self._etiqueta_tipo_pieza = QLabel("Seleccione la parte del animal")
+        self._etiqueta_tipo_pieza.setAlignment(Qt.AlignCenter)
+        self._etiqueta_tipo_pieza.setStyleSheet(
             "font-size: 13px; color: #444; font-weight: 600;"
         )
+        layout_panel.addWidget(self._etiqueta_tipo_pieza)
 
-        layout_panel.addWidget(etiqueta)
+        self._fila_botones_tipo_pieza = QHBoxLayout()
+        self._fila_botones_tipo_pieza.setSpacing(16)
+        layout_panel.addLayout(self._fila_botones_tipo_pieza)
 
-        fila_botones = QHBoxLayout()
-        fila_botones.setSpacing(16)
+        return pagina
+    
+    def _actualizar_botones_tipo_pieza(self, id_especie):
+        tipos_pieza = TIPOS_PIEZA_POR_ESPECIE.get(id_especie, [])
 
-        for tpo_pza, nombre_tipo, color in TIPOS_PIEZA:
+        self._etiqueta_tipo_pieza.setText(
+            "Seleccione la parte del animal"
+            if len(tipos_pieza) > 1
+            else "Confirme la opción"
+        )
 
+        # Limpiar botones de la especie anterior
+        while self._fila_botones_tipo_pieza.count():
+            item = self._fila_botones_tipo_pieza.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        for tpo_pza, nombre_tipo, color in tipos_pieza:
             boton = QPushButton(nombre_tipo)
-
             boton.setCursor(Qt.PointingHandCursor)
             boton.setMinimumSize(160, 52)
-            boton.setSizePolicy(
-                QSizePolicy.Expanding,
-                QSizePolicy.Fixed
-            )
-
+            boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             boton.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {color};
@@ -422,37 +424,10 @@ class VentanaPrincipal(QWidget):
                 lambda _=False, tp=tpo_pza, nt=nombre_tipo:
                     self._tipo_pieza_elegido(tp, nt)
             )
+            self._fila_botones_tipo_pieza.addWidget(boton)
 
-            fila_botones.addWidget(boton)
-
-        # Se agrega UNA sola vez, después del for, en la misma fila
-        boton_continuar = QPushButton("Reiniciar")
-        boton_continuar.setCursor(Qt.PointingHandCursor)
-        boton_continuar.setMinimumSize(220, 46)
-        boton_continuar.setMaximumWidth(320)
-        boton_continuar.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Fixed
-        )
-        boton_continuar.setStyleSheet("""
-            QPushButton {
-                background-color: #1E6FD9;
-                color: white;
-                font-size: 15px;
-                font-weight: bold;
-                border: none;
-                border-radius: 10px;
-            }
-            QPushButton:hover { background-color: #1A62BE; }
-            QPushButton:pressed { background-color: #164F9C; }
-        """)
-        boton_continuar.clicked.connect(self._continuar)
-
-        fila_botones.addWidget(boton_continuar)
-
-        layout_panel.addLayout(fila_botones)
-
-        return pagina
+        # El Reiniciar siempre está presente, en las 3 especies
+        self._fila_botones_tipo_pieza.addWidget(self._crear_boton_reiniciar())
 
     # ==============================================================
     # CAMPO CON ICONO (fecha / lote)
@@ -809,7 +784,6 @@ class VentanaPrincipal(QWidget):
     # ==============================================================
     # ESPECIE SELECCIONADA / DESELECCIONADA
     # ==============================================================
-
     def _especie_elegida(self, boton):
 
         id_especie = boton.property("id_especie")
@@ -830,8 +804,6 @@ class VentanaPrincipal(QWidget):
             self._resaltar_tarjeta(id_especie)
             self._ocultar_panel_tipo_pieza()
 
-            # Al deseleccionar, volvemos a cargar los lotes
-            # solo por fecha (sin filtro de especie).
             self._cargar_lotes()
 
             return
@@ -850,13 +822,15 @@ class VentanaPrincipal(QWidget):
         self._resaltar_tarjeta(id_especie)
 
         # ------------------------------------------------------------
-        # RES: mostrar panel de tipo de pieza en vez de continuar
-        # directo. Otras especies: comportamiento original.
+        # Si la especie tiene tipos de pieza configurados (RES, CERDO,
+        # TERNERA), mostramos el panel correspondiente en vez de
+        # avanzar directo.
         # ------------------------------------------------------------
 
-        if id_especie == ID_ESPECIE_RES:
+        if id_especie in TIPOS_PIEZA_POR_ESPECIE:
 
             self._nombre_especie_pendiente = nombre_especie
+            self._actualizar_botones_tipo_pieza(id_especie)
             self._mostrar_panel_tipo_pieza()
 
         else:
@@ -865,8 +839,7 @@ class VentanaPrincipal(QWidget):
             self._avanzar_a_seleccion_producto(
                 id_especie,
                 nombre_especie,
-                empresa = 0, tpo_pza = 0, nombre_tipo_pieza = None
-                
+                empresa=0, tpo_pza=0, nombre_tipo_pieza=None
             )
 
     # ==============================================================
@@ -882,18 +855,12 @@ class VentanaPrincipal(QWidget):
     # ==============================================================
     # TIPO DE PIEZA ELEGIDO (DELANTERO / TRASERO)
     # ==============================================================
-
     def _tipo_pieza_elegido(self, tpo_pza, nombre_tipo_pieza):
-
-        if self.especie_seleccionada != ID_ESPECIE_RES:
-            # Salvaguarda: el panel solo debería estar visible
-            # cuando la especie seleccionada es RES.
+        if self.especie_seleccionada not in TIPOS_PIEZA_POR_ESPECIE:
             return
-
         print(f"Pieza seleccionada: {nombre_tipo_pieza}")
-
         self._avanzar_a_seleccion_producto(
-            ID_ESPECIE_RES,
+            self.especie_seleccionada,
             self._nombre_especie_pendiente,
             tpo_pza=tpo_pza,
             nombre_tipo_pieza=nombre_tipo_pieza,
@@ -1113,7 +1080,7 @@ class VentanaPrincipal(QWidget):
 
         self.especie_seleccionada = None
         self._nombre_especie_pendiente = None
-        self.campo_empresa.text() == None
+        self.campo_empresa.clear()
 
         for boton in self.grupo_especies.buttons():
             boton.setChecked(False)
