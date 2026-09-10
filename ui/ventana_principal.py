@@ -884,7 +884,12 @@ class VentanaPrincipal(QWidget):
             return
         if not self.validar_especie(id_especie):
             return
-        
+        if not self.validar_combo():
+            return
+        lote_seleccionado = self.campo_lote.currentData()
+        print(f"Lote seleccionado (objeto): {lote_seleccionado}")
+        print(f"Lote seleccionado (texto): {self.campo_lote.currentText()}")
+        print(f"Índice actual del combo: {self.campo_lote.currentIndex()}")
         fecha = self.campo_fecha.date()
         fecha_bd = fecha.toString("yyyy/MM/dd")
         try:
@@ -920,7 +925,7 @@ class VentanaPrincipal(QWidget):
         # el flujo de las demás especies.
         # --------------------------------------------------------------
         self._app.mostrar_seleccion(
-            lotes=lotes,
+            lotes=[lote_seleccionado],
             fecha_produccion=fecha.toString("yyyy-MM-dd"),
             especie=nombre_especie,
             numEspecie=id_especie,
