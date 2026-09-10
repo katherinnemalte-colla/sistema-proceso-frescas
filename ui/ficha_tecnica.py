@@ -11,7 +11,7 @@ from utils.ventana_utils import aplicar_tamano
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
 from utils import fechas
-from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas
+from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas, generar_vista_previa_pixmap,DatosEtiquetaFrescas
 from services.bascula_service import bascula_service
 import webbrowser
 import tempfile
@@ -40,7 +40,7 @@ class FichaTecnica(QWidget):
         fecha_vencimiento_str,
     ):
         super().__init__()
-
+        
         self.usuario = usuario
         self._obtener_conexion = obtener_conexion
         self._app = app_ventana
@@ -86,6 +86,12 @@ class FichaTecnica(QWidget):
         self.setStyleSheet("QWidget { background-color: #F5F8F8; }")
 
         self._crear_interfaz()
+        # Vista previa inicial + reutilizar los mismos parámetros al cambiar el peso
+        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
+        self.actualizar_vista_previa(
+            construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+        )
+        #bascula_service.peso_actualizado.connect(self._on_peso_actualizado)
 
     # ==============================================================
     # CONEXIÓN A BD — mismo patrón que SeleccionDeProducto
@@ -672,12 +678,11 @@ class FichaTecnica(QWidget):
     # ==============================================================
     # DATOS ADICIONALES
     # ==============================================================
-
     def _crear_datos_adicionales(self) -> QFrame:
         marco = QFrame()
         marco.setStyleSheet("""
             QFrame {
-                background-color: black;
+                background-color: white;
                 border: 1px solid #D9E2E4;
                 border-radius: 12px;
             }
@@ -687,35 +692,63 @@ class FichaTecnica(QWidget):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(8)
 
+        self.lbl_vista_previa_etiqueta = QLabel()
+        self.lbl_vista_previa_etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_vista_previa_etiqueta.setMinimumHeight(160)
+        layout.addWidget(self.lbl_vista_previa_etiqueta)
+
         layout.addStretch()
         return marco
 
-    # ==============================================================
-    # ACCIONES
-    # ==============================================================
-    def _guardar_peso(self):
+
+    def actualizar_vista_previa(self, datos: DatosEtiquetaFrescas) -> None:
+        pixmap = generar_vista_previa_pixmap(datos)
+
+        pixmap_escalado = pixmap.scaled(
+            self.lbl_vista_previa_etiqueta.width() or pixmap.width(),
+            self.lbl_vista_previa_etiqueta.height() or pixmap.height(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        self.lbl_vista_previa_etiqueta.setPixmap(pixmap_escalado)
+
+    def _construir_parametros_etiqueta(self) -> dict:
         producto_para_etiqueta = self.producto_completo or SimpleNamespace(
             cdgo_plu=self.producto.get("cdgo_plu"),
             nom_prog=self.producto.get("nom_prog", self.producto.get("nombre", "")),
         )
 
-        datos = construir_datos_etiqueta(
+        return dict(
             producto=producto_para_etiqueta,
             lote=self.lote,
             fecha_produccion=self.fecha_produccion,
             nombre_usuario=self.usuario.nombre_usuario,
             cod_empresa=self.empresa,
             tipo_limpieza_seleccionado=self.tipo_limpieza_seleccionado,
-            peso_bascula = self.peso_neto_kg,
-            fecha_sacrificio= self.fecha_sacrificio,
-            nom_impr_etiq = self.nom_impr_etiq,
-            numEspecie = self.numEspecie,
-            fecha_vencimiento_str = self.fecha_vencimiento_str,
-    )
-        
-        imprimir_etiqueta_frescas(datos, "ZDesigner GK420t (Copiar 1)")    
+            peso_bascula=self.peso_neto_kg,
+            fecha_sacrificio=self.fecha_sacrificio,
+            nom_impr_etiq=self.nom_impr_etiq,
+            numEspecie=self.numEspecie,
+            fecha_vencimiento_str=self.fecha_vencimiento_str,
+        )
+
+
+    def _guardar_peso(self):
+        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
+        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+        imprimir_etiqueta_frescas(datos, "ZDesigner ZD230-203dpi ZPL")
+
+
     def _volver_a_seleccion_de_producto(self):
         self._app.mostrar_seleccion_sin_recargar()
-    
+
+
+    def _on_peso_actualizado(self, nuevo_peso: float) -> None:
+        if not getattr(self, "_parametros_etiqueta_actuales", None):
+            return
+        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+        self.actualizar_vista_previa(datos)
+  
     def _volver_a_inicio(self):
         self._app.mostrar_principal()

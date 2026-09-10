@@ -278,10 +278,7 @@ class ObtenerTipoPzaRepository:
                 pagina.cdgo_plu,
                 pagina.nmbre_crto AS nom_prog,
                 pagina.letra,
-                CAST(
-                    CAST(img.con_arch AS VARCHAR(MAX))
-                    AS VARBINARY(MAX)
-                ) AS con_arch
+                img.con_arch_2    AS con_arch
             FROM pagina
             LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia = CAST(pagina.cdgo_plu AS VARCHAR(50))
@@ -350,10 +347,7 @@ class ObtenerTipoPzaRepository:
             SELECT
                 pagina.cdgo_plu,
                 pagina.nmbre_crto AS nom_prog,
-                CAST(
-                    CAST(img.con_arch AS VARCHAR(MAX))
-                    AS VARBINARY(MAX)
-                ) AS con_arch
+                img.con_arch_2   AS con_arch
             FROM pagina
             LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia = CAST(pagina.cdgo_plu AS VARCHAR(50))
@@ -399,13 +393,10 @@ class ObtenerTipoPzaRepository:
     ) -> List[Producto]:
 
         consulta = f"""
-            SELECT DISTINCT
+            SELECT
                 p.cdgo_plu,
                 p.nmbre_crto AS nom_prog,
-                CAST(
-                    CAST(img.con_arch AS VARCHAR(MAX))
-                    AS VARBINARY(MAX)
-                ) AS con_arch
+                img.con_arch_2 AS con_arch
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
@@ -466,10 +457,7 @@ class ObtenerTipoPzaRepository:
             SELECT
                 p.cdgo_plu,
                 p.nmbre_crto AS nom_prog,
-                CAST(
-                    CAST(img.con_arch AS VARCHAR(MAX))
-                    AS VARBINARY(MAX)
-                ) AS con_arch,
+                img.con_arch_2 AS con_arch,
                 img.con_arch_2 AS con_arch_2,
                 img.con_arch_3 AS con_arch_3,
                 img.con_arch_4 AS con_arch_4,

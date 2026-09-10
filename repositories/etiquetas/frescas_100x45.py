@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QFont, QPixmap
+from PySide6.QtGui import QFont, QPixmap, QPainter
 from repositories.empresa_repository import (
     obtener_ciudad_empresa_db,
     obtener_fabricado_empresa_db,
@@ -264,30 +264,20 @@ def construir_datos_etiqueta(
 
 
 # ======================================================================
-# IMPRESIÓN
+# DIBUJO (compartido entre impresión y vista previa)
 # ======================================================================
 
-def imprimir_etiqueta_frescas(
+def _dibujar_contenido_etiqueta(
+    painter: QPainter,
     datos: DatosEtiquetaFrescas,
-    nombre_impresora: str,
-):
-    impresora = crear_impresora(
-        nombre_impresora,
-        ANCHO_MM,
-        ALTO_MM,
-    )
-
-    painter = crear_painter(impresora)
-
-    # Mantiene la orientación utilizada por la impresora actual.
-    painter.setWindow(0, 0, 450, 1000)
-    painter.translate(450, 0)
-    painter.rotate(90)
-
-    # ==================================================================
-    # ÁREAS
-    # ==================================================================
-
+) -> None:
+    """
+    Dibuja el contenido completo de la etiqueta (QR, textos, logo) sobre
+    un QPainter ya preparado con el sistema de coordenadas ANCHO x ALTO
+    (1000 x 450). Se usa TANTO para imprimir como para la vista previa en
+    pantalla, así ambas salidas son siempre idénticas y el diseño solo
+    existe en un solo lugar.
+    """
     x_full = MARGEN
     ancho_full = ANCHO - (MARGEN * 2)
 
@@ -296,14 +286,15 @@ def imprimir_etiqueta_frescas(
         2 * (MARGEN + QR_SIZE + SEPARACION_QR)
     )
 
-    # ==================================================================
-    # FUNCIONES DE DIBUJO
-    # ==================================================================
+    # ================================================================
+    # FUNCIONES AUXILIARES
+    # ================================================================
 
     def fuente(tamano: int, negrita: bool = False) -> QFont:
         font = QFont("Arial")
         font.setWeight(
-            QFont.Weight.Bold if negrita else QFont.Weight.Normal
+            QFont.Weight.Bold if negrita
+            else QFont.Weight.Normal
         )
         font.setPixelSize(tamano)
         return font
@@ -388,9 +379,9 @@ def imprimir_etiqueta_frescas(
             logo,
         )
 
-    # ==================================================================
+    # ================================================================
     # QR
-    # ==================================================================
+    # ================================================================
 
     qr_y = ALTO - QR_SIZE - 20
 
@@ -398,7 +389,12 @@ def imprimir_etiqueta_frescas(
         dibujar_qr(
             painter,
             datos.qr_izquierda,
-            QRectF(MARGEN, qr_y, QR_SIZE, QR_SIZE),
+            QRectF(
+                MARGEN,
+                qr_y,
+                QR_SIZE,
+                QR_SIZE,
+            ),
         )
 
     if datos.qr_derecha:
@@ -415,9 +411,9 @@ def imprimir_etiqueta_frescas(
             ),
         )
 
-    # ==================================================================
+    # ================================================================
     # PARTE SUPERIOR
-    # ==================================================================
+    # ================================================================
 
     # Descripción del producto.
     y = 14
@@ -459,7 +455,7 @@ def imprimir_etiqueta_frescas(
         negrita_der=True,
         prop_izq=0.42,
     )
-    print(f"Peso Neto:{datos.peso_neto_kg:.2f}kg   ")
+
     y += 36
 
     # Fecha beneficio | Fecha de vencimiento.
@@ -479,9 +475,9 @@ def imprimir_etiqueta_frescas(
 
     y += 40
 
-    # ==================================================================
+    # ================================================================
     # FABRICANTE
-    # ==================================================================
+    # ================================================================
 
     texto(
         x_full,
@@ -513,9 +509,9 @@ def imprimir_etiqueta_frescas(
 
     y += 30
 
-    # ==================================================================
+    # ================================================================
     # CONSERVACIÓN
-    # ==================================================================
+    # ================================================================
 
     texto(
         x_full,
@@ -539,9 +535,9 @@ def imprimir_etiqueta_frescas(
 
     y += 32
 
-    # ==================================================================
+    # ================================================================
     # LÍNEA DIVISORIA
-    # ==================================================================
+    # ================================================================
 
     pluma = painter.pen()
     pluma.setWidth(GROSOR_LINEA)
@@ -603,3 +599,49 @@ def imprimir_etiqueta_frescas(
         tamano=18,
         alineacion=Qt.AlignmentFlag.AlignCenter,
     )
+
+
+# ======================================================================
+# VISTA PREVIA (en memoria, no toca la impresora)
+# ======================================================================
+
+def generar_vista_previa_pixmap(datos: DatosEtiquetaFrescas) -> QPixmap:
+    """Genera una imagen con el MISMO diseño que se imprime, para mostrarla
+    en la interfaz. No toca la impresora física."""
+    pixmap = QPixmap(ANCHO, ALTO)
+    pixmap.fill(Qt.GlobalColor.white)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+    _dibujar_contenido_etiqueta(painter, datos)
+    painter.end()
+
+    return pixmap
+
+
+# ======================================================================
+# IMPRESIÓN
+# ======================================================================
+
+def imprimir_etiqueta_frescas(
+    datos: DatosEtiquetaFrescas,
+    nombre_impresora: str,
+) -> None:
+    impresora = crear_impresora(
+        nombre_impresora,
+        ANCHO_MM,
+        ALTO_MM,
+    )
+
+    painter = crear_painter(impresora)
+
+    # Mantiene la orientación utilizada por la impresora actual.
+    painter.setWindow(0, 0, 450, 1000)
+    painter.translate(450, 0)
+    painter.rotate(90)
+
+    _dibujar_contenido_etiqueta(painter, datos)
+
+    painter.end()
