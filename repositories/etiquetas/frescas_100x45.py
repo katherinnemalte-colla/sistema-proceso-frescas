@@ -121,7 +121,7 @@ def _generar_contenido_qr(
     cdgo_plu: str,
     piezas: int,
     fecha_vencimiento_str: Optional[date],
-    peso_neto_kg: Optional[float] = None,
+    peso_neto_kg: Optional[float],
 ) -> str:
     lote_fmt = str(lote).zfill(7)[-7:]
 
@@ -196,8 +196,9 @@ def construir_datos_etiqueta(
     fecha_vencimiento_str: Optional[date],
     nombre_usuario: str,
     cod_empresa: int,
+    peso_bascula: Optional[float],
     tipo_limpieza_seleccionado: Optional[int] = None,
-    peso_bascula: Optional[float] = None,
+    
     numero_ticket: Optional[int] = None,
     fecha_sacrificio: Optional[date] = None,
     nom_impr_etiq: Optional[str] = None,
@@ -219,12 +220,12 @@ def construir_datos_etiqueta(
     # Obtener el peso una sola vez para usar exactamente el mismo valor
     # tanto en el contenido del QR como en los datos de la etiqueta.
     peso_neto_kg = bascula_service.obtener_ultimo_peso()
-    print(f"'numero de PESO NETO': {peso_neto_kg}")
+    #print(f"'numero de PESO NETO': {peso_neto_kg}")
     contenido_qr = _generar_contenido_qr(
         lote=lote,
         cdgo_plu=producto.cdgo_plu,
-        nivel_limpieza=tipo_limpieza_seleccionado,
         peso_neto_kg = peso_neto_kg,
+        nivel_limpieza=tipo_limpieza_seleccionado,
         piezas=1,
         fecha_vencimiento_str=fecha_vencimiento_str,
     )
@@ -442,16 +443,16 @@ def _dibujar_contenido_etiqueta(
         if datos.fecha_fabricacion
         else ""
     )
-
+    peso_texto = f"{datos.peso_neto_kg:.2f}kg " if datos.peso_neto_kg is not None else "--.--kg "
     fila_dos_columnas(
         y,
         34,
         f"Fecha Empaque: {fecha_empaque}",
         (
-            f"Peso Neto:{datos.peso_neto_kg:.2f}kg   "
+            f"Peso Neto:{peso_texto}"
             f"Lote:{datos.lote}{nivel_texto}"
         ),
-        tamano=28,
+        tamano=25,
         negrita_der=True,
         prop_izq=0.42,
     )

@@ -51,7 +51,7 @@ class ImagenRepository:
     _SELECT_PRODUCTO_IMAGEN = f"""
         SELECT
             p.cdgo_plu,
-            p.nmbre_crto AS nom_prog,
+            p.nmbre_prdcto AS nom_prog,
             CAST(
                 CAST(i.con_arch AS VARCHAR(MAX))
                 AS VARBINARY(MAX)
@@ -75,7 +75,7 @@ class ImagenRepository:
         
         query = f"""
         SELECT DISTINCT
-            UPPER(LEFT(LTRIM(p.nmbre_crto), 1)) AS letra
+            UPPER(LEFT(LTRIM(p.nmbre_prdcto), 1)) AS letra
         FROM [{DB_PRODUCTOS}].dbo.prdctos AS p
         INNER JOIN [{DB_IMAGENES}].dbo.imagenes AS i
             ON i.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
@@ -100,7 +100,7 @@ class ImagenRepository:
             WHERE i.nom_prog = 'productos'
               AND p.cntro_prcso = 1
               AND p.cdgo_espcie = ?
-              AND UPPER(LEFT(LTRIM(p.nmbre_crto), 1)) = ?
+              AND UPPER(LEFT(LTRIM(p.nmbre_prdcto), 1)) = ?
         """
         with self._conexion_factory() as conexion:
             cursor = conexion.cursor()
@@ -140,8 +140,8 @@ class ImagenRepository:
         query = (
             self._SELECT_PRODUCTO_IMAGEN
             + """
-              AND UPPER(LEFT(LTRIM(p.nmbre_crto), 1)) = ?
-            ORDER BY p.nmbre_crto
+              AND UPPER(LEFT(LTRIM(p.nmbre_prdcto), 1)) = ?
+            ORDER BY p.nmbre_prdcto
             OFFSET ? ROWS
             FETCH NEXT ? ROWS ONLY
             """
@@ -164,7 +164,7 @@ class ImagenRepository:
             self._SELECT_PRODUCTO_IMAGEN
             + """
               AND CAST(p.cdgo_plu AS VARCHAR(50)) LIKE ?
-            ORDER BY p.nmbre_crto
+            ORDER BY p.nmbre_prdcto
             """
         )
         texto_busqueda = f"%{texto_plu.strip()}%"

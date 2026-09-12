@@ -76,7 +76,7 @@ class ObtenerTipoPzaRepository:
 
         consulta = f"""
             SELECT DISTINCT
-                LEFT(p.nmbre_crto, 1) AS letra
+                LEFT(p.nmbre_prdcto, 1) AS letra
 
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
 
@@ -93,7 +93,7 @@ class ObtenerTipoPzaRepository:
               AND img.nom_prog = 'productos'
               AND LTRIM(
                     RTRIM(
-                        ISNULL(p.nmbre_crto, '')
+                        ISNULL(p.nmbre_prdcto, '')
                     )
                   ) <> ''
 
@@ -147,7 +147,7 @@ class ObtenerTipoPzaRepository:
               AND p.cdgo_espcie = ?
               AND p.estdo = 0
               AND img.nom_prog = 'productos'
-              AND LEFT(p.nmbre_crto, 1) = ?
+              AND LEFT(p.nmbre_prdcto, 1) = ?
               AND EXISTS (
                   SELECT 1
                   FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli ft
@@ -258,8 +258,8 @@ class ObtenerTipoPzaRepository:
             WITH pagina AS (
                 SELECT DISTINCT
                     p.cdgo_plu,
-                    p.nmbre_crto,
-                    LEFT(p.nmbre_crto, 1) AS letra
+                    p.nmbre_prdcto,
+                    LEFT(p.nmbre_prdcto, 1) AS letra
                 FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
                 INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                     ON p.tpo_pza = a.tpo_pza
@@ -276,14 +276,14 @@ class ObtenerTipoPzaRepository:
             )
             SELECT
                 pagina.cdgo_plu,
-                pagina.nmbre_crto AS nom_prog,
+                pagina.nmbre_prdcto AS nom_prog,
                 pagina.letra,
                 img.con_arch_2    AS con_arch
             FROM pagina
             LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia = CAST(pagina.cdgo_plu AS VARCHAR(50))
                 AND img.nom_prog = 'productos'
-            ORDER BY pagina.nmbre_crto
+            ORDER BY pagina.nmbre_prdcto
         """
 
         with self._obtener_conexion() as conexion:
@@ -323,7 +323,7 @@ class ObtenerTipoPzaRepository:
             WITH pagina AS (
                 SELECT DISTINCT
                     p.cdgo_plu,
-                    p.nmbre_crto
+                    p.nmbre_prdcto
                 FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
                 INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                     ON p.tpo_pza = a.tpo_pza
@@ -332,7 +332,7 @@ class ObtenerTipoPzaRepository:
                   AND p.cdgo_espcie = ?
                   AND p.estdo = 0
                   
-                  AND LEFT(p.nmbre_crto, 1) = ?
+                  AND LEFT(p.nmbre_prdcto, 1) = ?
                   AND EXISTS (
                     SELECT 1
                     FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli ft
@@ -340,19 +340,19 @@ class ObtenerTipoPzaRepository:
                     AND (? IS NULL OR ? = 1 OR ft.cod_emprsa = ?)
                 )
 
-                ORDER BY p.nmbre_crto
+                ORDER BY p.nmbre_prdcto
                 OFFSET ? ROWS
                 FETCH NEXT ? ROWS ONLY
             )
             SELECT
                 pagina.cdgo_plu,
-                pagina.nmbre_crto AS nom_prog,
+                pagina.nmbre_prdcto AS nom_prog,
                 img.con_arch_2   AS con_arch
             FROM pagina
             LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia = CAST(pagina.cdgo_plu AS VARCHAR(50))
                 AND img.nom_prog = 'productos'
-            ORDER BY pagina.nmbre_crto
+            ORDER BY pagina.nmbre_prdcto
         """
 
         with self._obtener_conexion() as conexion:
@@ -395,7 +395,7 @@ class ObtenerTipoPzaRepository:
         consulta = f"""
             SELECT
                 p.cdgo_plu,
-                p.nmbre_crto AS nom_prog,
+                p.nmbre_prdcto AS nom_prog,
                 img.con_arch_2 AS con_arch
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
@@ -417,7 +417,7 @@ class ObtenerTipoPzaRepository:
                   (? IS NULL OR ? = 1 OR ft.cod_emprsa = ?)
                     AND ft.cdgo_plu = p.cdgo_plu
               )
-            ORDER BY p.nmbre_crto
+            ORDER BY p.nmbre_prdcto
         """
 
         with self._obtener_conexion() as conexion:
@@ -456,7 +456,7 @@ class ObtenerTipoPzaRepository:
         consulta = f"""
             SELECT
                 p.cdgo_plu,
-                p.nmbre_crto AS nom_prog,
+                p.nmbre_prdcto AS nom_prog,
                 img.con_arch_2 AS con_arch,
                 img.con_arch_2 AS con_arch_2,
                 img.con_arch_3 AS con_arch_3,

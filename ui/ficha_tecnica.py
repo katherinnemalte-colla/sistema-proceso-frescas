@@ -4,18 +4,16 @@ from PySide6.QtWidgets import (
 )
 from datetime import timedelta,date
 from typing import Optional
-from PySide6.QtCore import Qt, QSize, QDate
-from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from types import SimpleNamespace
 from utils.ventana_utils import aplicar_tamano
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
 from utils import fechas
-from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas, generar_vista_previa_pixmap,DatosEtiquetaFrescas
+from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas, generar_vista_previa_pixmap,DatosEtiquetaFrescas,siguiente_consecutivo_etiqueta_canasta
 from services.bascula_service import bascula_service
-import webbrowser
-import tempfile
-from pathlib import Path
+import shiboken6
 ANCHO_CONTENIDO = 1150
 COLOR_PRIMARIO = "#1a6b6b"
 COLOR_PRIMARIO_OSCURO = "#134f4f"
@@ -87,11 +85,12 @@ class FichaTecnica(QWidget):
 
         self._crear_interfaz()
         # Vista previa inicial + reutilizar los mismos parámetros al cambiar el peso
+        self.numero_ticket = siguiente_consecutivo_etiqueta_canasta()
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         self.actualizar_vista_previa(
             construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
         )
-        #bascula_service.peso_actualizado.connect(self._on_peso_actualizado)
+        bascula_service.peso_actualizado.connect(self._on_peso_actualizado)
 
     # ==============================================================
     # CONEXIÓN A BD — mismo patrón que SeleccionDeProducto
@@ -323,8 +322,8 @@ class FichaTecnica(QWidget):
 
         self.fecha_sacrificio = resultado_sacrificio.scrfcio if resultado_sacrificio else None
         self.nom_impr_etiq = resultado_sacrificio.nom_impr_etiq if resultado_sacrificio else None
-       
-    
+        print(f"la fecha de sacrificio{self.fecha_sacrificio }")
+        print(f"como llega lo te numero de especie{self.lote, self.numEspecie}")
         layout = QVBoxLayout(marco)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
@@ -501,7 +500,7 @@ class FichaTecnica(QWidget):
         layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(10)
 
-        titulo = QLabel("Tipo de limpieza")
+        titulo = QLabel("Nivel de Limpieza")
         titulo.setStyleSheet("font-size: 14px; font-weight: bold; color: #115E67;")
         layout.addWidget(titulo)
 
@@ -671,7 +670,7 @@ class FichaTecnica(QWidget):
         self.etiqueta_peso_neto = QLabel(f"Peso neto        {self.peso_neto_kg:.3f} kg")
         self.etiqueta_peso_neto.setStyleSheet("color: #444; font-size: 13px;")
         layout.addWidget(self.etiqueta_peso_neto)
-
+        self.etiqueta_peso.setText("prueba123")
         layout.addStretch()
         return marco
 
@@ -684,35 +683,39 @@ class FichaTecnica(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #D9E2E4;
-                border-radius: 12px;
+                border-radius: 10px;
             }
         """)
 
         layout = QVBoxLayout(marco)
         layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
         self.lbl_vista_previa_etiqueta = QLabel()
         self.lbl_vista_previa_etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_vista_previa_etiqueta.setMinimumHeight(160)
+        self.lbl_vista_previa_etiqueta.setMinimumHeight(150)
         layout.addWidget(self.lbl_vista_previa_etiqueta)
 
         layout.addStretch()
         return marco
 
-
     def actualizar_vista_previa(self, datos: DatosEtiquetaFrescas) -> None:
+        if not shiboken6.isValid(self):
+            return  # el widget ya fue destruido, no hacer nada
+
         pixmap = generar_vista_previa_pixmap(datos)
 
+        ANCHO_MAX_PREVIEW = 575
+        ALTO_MAX_PREVIEW = 150
+
         pixmap_escalado = pixmap.scaled(
-            self.lbl_vista_previa_etiqueta.width() or pixmap.width(),
-            self.lbl_vista_previa_etiqueta.height() or pixmap.height(),
+            ANCHO_MAX_PREVIEW,
+            ALTO_MAX_PREVIEW,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
 
         self.lbl_vista_previa_etiqueta.setPixmap(pixmap_escalado)
-
     def _construir_parametros_etiqueta(self) -> dict:
         producto_para_etiqueta = self.producto_completo or SimpleNamespace(
             cdgo_plu=self.producto.get("cdgo_plu"),
@@ -731,24 +734,47 @@ class FichaTecnica(QWidget):
             nom_impr_etiq=self.nom_impr_etiq,
             numEspecie=self.numEspecie,
             fecha_vencimiento_str=self.fecha_vencimiento_str,
+            numero_ticket=self.numero_ticket,
         )
 
 
     def _guardar_peso(self):
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
-        imprimir_etiqueta_frescas(datos, "ZDesigner ZD230-203dpi ZPL")
+        imprimir_etiqueta_frescas(datos, "Godex ZX420i GZPL")
 
 
-    def _volver_a_seleccion_de_producto(self):
+    def _volver_a_seleccion_de_producto(self,event):
+        bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
+        super().closeEvent(event)
+        bascula_service.detener()
         self._app.mostrar_seleccion_sin_recargar()
 
-
     def _on_peso_actualizado(self, nuevo_peso: float) -> None:
-        if not getattr(self, "_parametros_etiqueta_actuales", None):
+        self.peso_neto_kg = nuevo_peso
+
+        self.etiqueta_peso.setText(
+            f"{nuevo_peso:.3f}"
+        )
+
+        self.etiqueta_peso_neto.setText(
+            f"Peso neto        {nuevo_peso:.3f} kg "
+        )
+
+        if not getattr(
+            self,
+            "_parametros_etiqueta_actuales",
+            None
+        ):
             return
-        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+
+        datos = construir_datos_etiqueta(
+            **self._parametros_etiqueta_actuales
+        )
+
         self.actualizar_vista_previa(datos)
   
     def _volver_a_inicio(self):
+        bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
+        bascula_service.detener()
         self._app.mostrar_principal()
