@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt, QDate, QSize
-from utils.ventana_utils import aplicar_tamano
+from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente
 from models.usuarios import Usuario
 from repositories.obtener_lote_fecha_repository import (
     ObtenerLoteFechaRepository
@@ -99,7 +99,7 @@ class VentanaPrincipal(QWidget):
         self.setStyleSheet("""
             QWidget {
                 background-color: #F5F8F8;
-                font-family: "Segoe UI";
+                font-family: "Recoleta";
             }
         """)
 
@@ -124,8 +124,8 @@ class VentanaPrincipal(QWidget):
         layout.setSpacing(16)
 
         contenedor = QWidget()
-        contenedor.setMinimumWidth(ANCHO_CONTENIDO_MIN)
-        contenedor.setMaximumWidth(ANCHO_CONTENIDO_MAX)
+        #contenedor.setMinimumWidth(ANCHO_CONTENIDO_MIN)
+        #contenedor.setMaximumWidth(ANCHO_CONTENIDO_MAX)
         contenedor.setSizePolicy(
             QSizePolicy.Expanding,
             QSizePolicy.Preferred
@@ -162,7 +162,7 @@ class VentanaPrincipal(QWidget):
         layout.addWidget(titulo)
 
         subtitulo = QLabel(
-            "Seleccione la información para iniciar el proceso"
+            "Seleccione la informacion para iniciar el proceso"
         )
 
         subtitulo.setAlignment(Qt.AlignCenter)
@@ -187,7 +187,7 @@ class VentanaPrincipal(QWidget):
         columna_fecha = QVBoxLayout()
         columna_fecha.setSpacing(6)
 
-        etiqueta_fecha = QLabel("Fecha de producción")
+        etiqueta_fecha = QLabel("Fecha de produccion")
         etiqueta_fecha.setStyleSheet("font-size: 13px; color: #444;")
 
         self.campo_fecha = QDateEdit()
@@ -636,7 +636,7 @@ class VentanaPrincipal(QWidget):
                 QSizePolicy.Expanding,
                 QSizePolicy.Preferred
             )
-            tarjeta.setMinimumWidth(160)
+            tarjeta.setMinimumWidth(escalar(160))
             tarjeta.setStyleSheet(f"""
                 QFrame#tarjeta {{
                     background-color: white;

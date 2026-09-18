@@ -16,10 +16,10 @@ from PySide6.QtWidgets import (
 
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QPixmap
-
+from utils.rutas import ruta_recurso
 from services import auth_service
 from utils.mensajes import MensajesLogin
-from utils.ventana_utils import aplicar_tamano
+from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente
 
 
 class VentanaLogin(QDialog):
@@ -146,10 +146,8 @@ class VentanaLogin(QDialog):
 
         fondo = QLabel(panel)
         fondo.setObjectName("fondo")
-
-        pixmap_fondo = QPixmap(
-            "assets/icons/login/fondo_login.png"
-        )
+        
+        pixmap_fondo = QPixmap(str(ruta_recurso("assets/icons/login/fondo_login.png")))
 
         fondo.setPixmap(
         pixmap_fondo.scaled(
@@ -181,10 +179,7 @@ class VentanaLogin(QDialog):
 
         logo = QLabel()
         logo.setObjectName("logo")
-
-        pixmap_logo = QPixmap(
-            "assets/icons/cialta.png"
-        )
+        pixmap_logo = QPixmap(str(ruta_recurso("assets/icons/cialta.png")))
 
         logo.setPixmap(
             pixmap_logo.scaled(

@@ -19,8 +19,8 @@ from PySide6.QtCore import (
 )
 
 from PySide6.QtGui import QPixmap
-
-from utils.ventana_utils import aplicar_tamano
+from utils.rutas import ruta_recurso
+from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente
 
 
 VERSION_APP = "v1.0.0"
@@ -50,9 +50,7 @@ class VentanaFondo(QWidget):
 
         self.imagen_fondo.setScaledContents(False)
 
-        pixmap = QPixmap(
-            "assets/icons/login/fondo_login.png"
-        )
+        pixmap = QPixmap(str(ruta_recurso("assets/icons/login/fondo_login.png")))
 
         self.imagen_fondo.setPixmap(
             pixmap
@@ -178,7 +176,8 @@ class VentanaFondo(QWidget):
     # ==============================================================
 
     def _ajustar_fondo(self):
-
+        if not hasattr(self, "imagen_fondo") or not hasattr(self, "capa_oscura"):
+         return
         self.imagen_fondo.setGeometry(
             self.rect()
         )

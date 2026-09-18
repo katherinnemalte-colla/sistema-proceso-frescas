@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Optional
-
+from utils.rutas import ruta_recurso
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QFont, QPixmap, QPainter
 from repositories.empresa_repository import (
@@ -63,7 +63,7 @@ RECOMENDACION_USO = (
 
 CODIGO_PROCESO_DEFAULT = socket.gethostname()
 
-RUTA_ICONOS = os.path.join("assets", "icons")
+RUTA_ICONOS = ruta_recurso(os.path.join("assets", "icons"))
 
 _consecutivo_repository = ConsecutivoRepository()
 

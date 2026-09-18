@@ -15,12 +15,13 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QGraphicsDropShadowEffect,
 )
-from utils.ventana_utils import aplicar_tamano, _icono_pixmap
+from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,_icono_pixmap
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository, TAMANO_PAGINA
 from utils import fechas
 from utils.colores import Colores
 from collections import namedtuple
 from utils import mensajes
+from utils.rutas import ruta_recurso
 
 CriterioFiltroRes = namedtuple(
     "CriterioFiltroRes",
@@ -42,8 +43,7 @@ COLOR_SELECCIONADO = "#1a6b6b"
 COLOR_BORDE = "#dfe6e6"
 COLOR_TEXTO_SECUNDARIO = "#8a97a0"
 COLOR_FONDO = "#eef3f3"
-
-RUTA_ICONOS = os.path.join("assets", "icons", "icons")
+RUTA_ICONOS = ruta_recurso(os.path.join("assets", "icons", "icons"))
 
 def _ruta_icono(nombre_archivo):
     return os.path.join(RUTA_ICONOS, nombre_archivo)
