@@ -3,11 +3,6 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 
-import os
-from dataclasses import dataclass
-from typing import List, Optional
-
-
 DB_PRODUCTOS = os.getenv("DB_DATABASE")
 DB_IMAGENES = os.getenv("DB_DATABASE_1")
 

@@ -19,7 +19,7 @@ from PySide6.QtGui import QPixmap
 from utils.rutas import ruta_recurso
 from services import auth_service
 from utils.mensajes import MensajesLogin
-from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente
+from utils.ventana_utils import aplicar_tamano,escalar, escalar_fuente
 
 
 class VentanaLogin(QDialog):
@@ -42,102 +42,71 @@ class VentanaLogin(QDialog):
         aplicar_tamano(
             self,
             modo="centrado",
-            ancho_pct=0.45,
-            alto_pct=0.45,
+            ancho_pct=0.58,   # login no necesita 95% de pantalla
+            alto_pct=0.55,
             referencia=ventana_fondo
         )
-
-        self.setFixedSize(self.size())
-
-        # ==========================================================
-        # PANEL PRINCIPAL
-        # ==========================================================
+        # SIN setFixedSize: dejamos que resize() haga su trabajo,
+        # y opcionalmente ponemos límites razonables:
+        self.setMinimumSize(escalar(480), escalar(340))
+        self.setMaximumSize(escalar(900), escalar(650))
 
         panel = QWidget(self)
         panel.setObjectName("panel")
         panel.setGeometry(self.rect())
 
-        panel.setStyleSheet("""
-            #panel {
-                background-color: #082F35;
-                border-radius: 0px;
-            }
-
-            QLabel {
+        panel.setStyleSheet(f"""
+            #panel {{ background-color: #082F35; }}
+            QLabel {{ color: white; }}
+            #logo {{ background: transparent; }}
+            #titulo_bienvenida {{
                 color: white;
-            }
-
-            #logo {
-                background: transparent;
-            }
-
-            #titulo_bienvenida {
-                color: white;
-                font-size: 24px;
+                font-size: {escalar_fuente(24)}px;
                 font-weight: bold;
-            }
-
-            #subtitulo {
+            }}
+            #subtitulo {{
                 color: #B8C9CB;
-                font-size: 13px;
-            }
-
-            #linea {
-                background-color: #2C8992;
-            }
-
-            QLineEdit {
-                padding: 12px;
-                border-radius: 7px;
+                font-size: {escalar_fuente(13)}px;
+            }}
+            #linea {{ background-color: #2C8992; }}
+            QLineEdit {{
+                padding: {escalar(12)}px;
+                border-radius: {escalar(7)}px;
                 border: 1px solid #47777D;
                 background-color: rgba(255, 255, 255, 0.08);
                 color: white;
-                font-size: 14px;
-            }
-
-            QLineEdit:focus {
+                font-size: {escalar_fuente(14)}px;
+            }}
+            QLineEdit:focus {{
                 border: 1px solid #94B7BB;
                 background-color: rgba(255, 255, 255, 0.12);
-            }
-
-            QLineEdit::placeholder {
-                color: #A8BCBF;
-            }
-
-            QPushButton {
-                padding: 11px;
-                border-radius: 7px;
+            }}
+            QLineEdit::placeholder {{ color: #A8BCBF; }}
+            QPushButton {{
+                padding: {escalar(11)}px;
+                border-radius: {escalar(7)}px;
                 background-color: #0F7C87;
                 color: white;
-                font-size: 14px;
+                font-size: {escalar_fuente(14)}px;
                 font-weight: bold;
                 border: none;
-            }
-
-            QPushButton:hover {
-                background-color: #1595A1;
-            }
-
-            #boton_cancelar {
+            }}
+            QPushButton:hover {{ background-color: #1595A1; }}
+            #boton_cancelar {{
                 background-color: transparent;
                 border: 1px solid #47777D;
                 color: #B8C9CB;
-            }
-
-            #boton_cancelar:hover {
-                background-color: rgba(255, 255, 255, 0.08);
-            }
-
-            #enlace_contrasena {
+            }}
+            #boton_cancelar:hover {{ background-color: rgba(255, 255, 255, 0.08); }}
+            #enlace_contrasena {{
                 color: #94B7BB;
-                font-size: 12px;
+                font-size: {escalar_fuente(12)}px;
                 background: transparent;
-            }
-
-            #version {
+            }}
+            #version {{
                 color: #78969A;
-                font-size: 10px;
-            }
+                font-size: {escalar_fuente(10)}px;
+            }}
         """)
 
         # ==========================================================
@@ -183,8 +152,8 @@ class VentanaLogin(QDialog):
 
         logo.setPixmap(
             pixmap_logo.scaled(
-                260,
-                130,
+                escalar(260),
+                escalar(130),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             )
@@ -210,7 +179,7 @@ class VentanaLogin(QDialog):
 
         linea = QFrame()
         linea.setObjectName("linea")
-        linea.setFixedHeight(1)
+        linea.setFixedHeight(escalar(1) or 1)
 
         # ==========================================================
         # CAMPOS
@@ -332,7 +301,7 @@ class VentanaLogin(QDialog):
 
         contenedor_login = QWidget()
 
-        contenedor_login.setFixedWidth(350)
+        contenedor_login.setFixedWidth(escalar(350))
 
         contenedor_login.setLayout(
             columna_login
@@ -344,14 +313,9 @@ class VentanaLogin(QDialog):
 
         layout_principal = QHBoxLayout(panel)
 
-        layout_principal.setContentsMargins(
-            60,
-            35,
-            60,
-            20
-        )
+        layout_principal.setContentsMargins(escalar(60), escalar(35), escalar(60), escalar(20))
 
-        layout_principal.setSpacing(50)
+        layout_principal.setSpacing(escalar(50))
 
         # Parte izquierda
         columna_izquierda = QVBoxLayout()
@@ -382,11 +346,29 @@ class VentanaLogin(QDialog):
             columna_derecha,
             1
         )
-
+        self.panel = panel
+        self.fondo = fondo
+        self.capa = capa
     # ==============================================================
     # CERRAR
     # ==============================================================
-
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "panel"):
+            self.panel.setGeometry(self.rect())
+            if hasattr(self, "fondo"):
+                self.fondo.setGeometry(self.panel.rect())
+                pixmap_fondo = QPixmap("assets/icons/login/fondo_login.png")
+                self.fondo.setPixmap(
+                    pixmap_fondo.scaled(
+                        self.panel.size(),
+                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                        Qt.TransformationMode.SmoothTransformation
+                    )
+                )
+            if hasattr(self, "capa"):
+                self.capa.setGeometry(self.panel.rect())
+                
     def cerrar_programa(self):
         sys.exit(0)
 

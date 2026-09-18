@@ -1,26 +1,34 @@
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame, QGridLayout,
-    QVBoxLayout, QHBoxLayout, QDateEdit, QButtonGroup, QSizePolicy
+    QVBoxLayout, QHBoxLayout, QDateEdit, QButtonGroup, QSizePolicy,
+    QScrollArea
 )
-from datetime import timedelta,date
+from datetime import timedelta, date
 from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from types import SimpleNamespace
-from utils.ventana_utils import aplicar_tamano
+from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
 from utils import fechas
-from repositories.etiquetas.frescas_100x45 import construir_datos_etiqueta, imprimir_etiqueta_frescas, generar_vista_previa_pixmap,DatosEtiquetaFrescas,siguiente_consecutivo_etiqueta_canasta,CODIGO_PROCESO_DEFAULT
+from repositories.etiquetas.frescas_100x45 import (
+    construir_datos_etiqueta, imprimir_etiqueta_frescas,
+    generar_vista_previa_pixmap, DatosEtiquetaFrescas,
+    siguiente_consecutivo_etiqueta_canasta, CODIGO_PROCESO_DEFAULT
+)
 from services.bascula_service import bascula_service
 import shiboken6
 from PySide6.QtPrintSupport import QPrinterInfo
-from PySide6.QtWidgets import QComboBox,QLineEdit  # agregar al import existente de QtWidgets
-from services.hstrco_psje_service import registrar_historico_pesaje,guardar_historico_pesaje
+from PySide6.QtWidgets import QComboBox, QLineEdit
+from services.hstrco_psje_service import registrar_historico_pesaje, guardar_historico_pesaje
 from PySide6.QtGui import QIntValidator
-ANCHO_CONTENIDO = 1150
+
+ANCHO_CONTENIDO = 1150  # valor BASE, se escala con escalar() al usarlo
 COLOR_PRIMARIO = "#1a6b6b"
 COLOR_PRIMARIO_OSCURO = "#134f4f"
+
+
 class FichaTecnica(QWidget):
     def __init__(
         self,
@@ -61,12 +69,6 @@ class FichaTecnica(QWidget):
         self.empresa = empresa
         self.fecha_vencimiento_str = fechas._asegurar_date(fecha_vencimiento_str)
 
-        # ------------------------------------------------------------
-        # LAS 6 IMÁGENES: solo se consultan cuando viene de RES
-        # (tpo_pza no es None). El diccionario "producto" que llega de
-        # SeleccionDeProducto solo trae la imagen principal, así que
-        # las 5 adicionales se piden acá con obtener_producto_completo.
-        # ------------------------------------------------------------
         self.producto_completo = None
         if self.tpo_pza is not None:
             repositorio_imagenes = ObtenerTipoPzaRepository(self._obtener_conexion)
@@ -77,18 +79,19 @@ class FichaTecnica(QWidget):
                 str(self.producto.get("cdgo_plu", "")),
             )
 
-        # ------------------------------------------------------------
-        # TIPOS DE LIMPIEZA (catálogo, botón seleccionable exclusivo)
-        # ------------------------------------------------------------
         self.tipo_limpieza_seleccionado = None
         self._grupo_limpieza = None
 
         self.setWindowTitle(f"Ficha técnica - {producto.get('nombre', '')}")
-        aplicar_tamano(self, modo="completo" , ancho_pct=0.7, alto_pct=0.85)
+        aplicar_tamano(self, modo="completo", ancho_pct=0.7, alto_pct=0.85)
         self.setStyleSheet("QWidget { background-color: #F5F8F8; }")
+        # --- NUEVO: fuerza el factor de escala según el alto real de este contenido ---
+        ALTO_CONTENIDO_BASE_FICHA = 1100  # ajusta este valor midiendo tu contenido a factor 1
+        factor = factor_para_contenido(ALTO_CONTENIDO_BASE_FICHA, minimo=0.55, maximo=1.2)
+        establecer_factor_temporal(factor)
 
         self._crear_interfaz()
-        # Vista previa inicial + reutilizar los mismos parámetros al cambiar el peso
+        limpiar_factor_temporal()
         self.numero_ticket = siguiente_consecutivo_etiqueta_canasta()
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         self.actualizar_vista_previa(
@@ -97,55 +100,57 @@ class FichaTecnica(QWidget):
         bascula_service.peso_actualizado.connect(self._on_peso_actualizado)
 
     # ==============================================================
-    # CONEXIÓN A BD — mismo patrón que SeleccionDeProducto
+    # CONEXIÓN A BD
     # ==============================================================
+
     def _obtener_conexion(self):
-        from models.database import obtener_conexion  # import local para evitar ciclos
+        from models.database import obtener_conexion
         return obtener_conexion()
+
+    # ==============================================================
+    # DATOS DE VENCIMIENTO
+    # ==============================================================
+    def _obtener_datos_vencimiento(self) -> tuple[Optional[int], Optional[int], Optional[date], Optional[date]]:
+        codigo_producto = self.producto.get("cdgo_plu")
+        codigo_empresa = self.empresa
+
+        repo = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
+        dias_ref, dias_cong = repo.obtener_dias_vencimiento(codigo_producto, codigo_empresa)
+
+        fecha_vencimiento_refrigeracion = (
+            self.fecha_produccion + timedelta(days=int(dias_ref)) if dias_ref is not None else None
+        )
+        fecha_vencimiento_congelacion = (
+            self.fecha_produccion + timedelta(days=int(dias_cong)) if dias_cong is not None else None
+        )
+        return dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion
 
     # ==============================================================
     # INTERFAZ
     # ==============================================================
-    def _obtener_datos_vencimiento(self) -> tuple[Optional[int], Optional[int], Optional[date], Optional[date]]:
-            """
-            Devuelve (dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion),
-            con una sola consulta al repositorio.
-            """
-            codigo_producto = self.producto.get("cdgo_plu")
-            codigo_empresa = self.empresa
-    
-            repo = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
-            dias_ref, dias_cong = repo.obtener_dias_vencimiento(codigo_producto, codigo_empresa)
-    
-            fecha_vencimiento_refrigeracion = (
-                self.fecha_produccion + timedelta(days=int(dias_ref)) if dias_ref is not None else None
-            )
-            fecha_vencimiento_congelacion = (
-                self.fecha_produccion + timedelta(days=int(dias_cong)) if dias_cong is not None else None
-            )
-            print(f"'lo que retorna en ficha tecnica de dias': {dias_ref}, {dias_cong}")
-            return dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion
     def _crear_interfaz(self):
-        layout_externo = QVBoxLayout()
-        layout_externo.setContentsMargins(0, 0, 0, 0)
-
-        fila_central = QHBoxLayout()
-        fila_central.addStretch()
-
+        # ------------------------------------------------------------
+        # Contenido real (todo lo que va dentro del scroll)
+        # ------------------------------------------------------------
         layout = QVBoxLayout()
-        layout.setContentsMargins(25, 20, 25, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(
+            escalar(25), escalar(20), escalar(25), escalar(20)
+        )
+        layout.setSpacing(escalar(16))
 
         contenedor = QWidget()
-        contenedor.setFixedWidth(ANCHO_CONTENIDO)
+        #contenedor.setMaximumWidth(escalar(ANCHO_CONTENIDO))
+        contenedor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         contenedor.setLayout(layout)
 
-        fila_central.addWidget(contenedor)
-        fila_central.addStretch()
-
-        layout_externo.addStretch()
-        layout_externo.addLayout(fila_central)
-        layout_externo.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(contenedor)          # el contenedor va directo al scroll
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        layout_externo = QVBoxLayout(self)
+        layout_externo.setContentsMargins(0, 0, 0, 0)
+        layout_externo.addWidget(scroll)
 
         # ----------------------------------------------------------
         # ENCABEZADO: Atrás
@@ -153,14 +158,14 @@ class FichaTecnica(QWidget):
         encabezado = QHBoxLayout()
 
         boton_atras = QPushButton("←  Atrás")
-        boton_atras.setMinimumHeight(40)          # altura mínima, en vez de tamaño fijo
-        boton_atras.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)  # ancho: crece; alto: fijo
+        boton_atras.setMinimumHeight(escalar(40))
+        boton_atras.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         boton_atras.setStyleSheet(
             f"""
             QPushButton {{
                 background: {COLOR_PRIMARIO};
                 color: white;
-                font-size: 14px;
+                font-size: {escalar_fuente(14)}px;
                 font-weight: 700;
                 border: none;
                 letter-spacing: 1px;
@@ -168,13 +173,9 @@ class FichaTecnica(QWidget):
             QPushButton:hover {{
                 background: {COLOR_PRIMARIO_OSCURO};
             }}"""
-            )
+        )
         boton_atras.clicked.connect(self._volver_a_seleccion_de_producto)
         encabezado.addWidget(boton_atras, stretch=1)
-
-        espaciador = QLabel("")
-        espaciador.setFixedSize(110, 40)
-        #ncabezado.addWidget(espaciador)
 
         layout.addLayout(encabezado)
 
@@ -182,7 +183,7 @@ class FichaTecnica(QWidget):
         # FILA: imagen principal + información del producto
         # ----------------------------------------------------------
         fila_superior = QHBoxLayout()
-        fila_superior.setSpacing(16)
+        fila_superior.setSpacing(escalar(16))
 
         fila_superior.addWidget(self._crear_imagen_principal())
         fila_superior.addWidget(self._crear_info_producto())
@@ -195,7 +196,7 @@ class FichaTecnica(QWidget):
         layout.addWidget(self._crear_galeria_imagenes())
 
         # ----------------------------------------------------------
-        # TIPO DE LIMPIEZA (catálogo dinámico, selección exclusiva)
+        # TIPO DE LIMPIEZA
         # ----------------------------------------------------------
         layout.addWidget(self._crear_seccion_tipo_limpieza())
 
@@ -203,7 +204,7 @@ class FichaTecnica(QWidget):
         # FILA: báscula + datos adicionales
         # ----------------------------------------------------------
         fila_inferior = QHBoxLayout()
-        fila_inferior.setSpacing(16)
+        fila_inferior.setSpacing(escalar(16))
 
         fila_inferior.addWidget(self._crear_bascula())
         fila_inferior.addWidget(self._crear_datos_adicionales())
@@ -214,56 +215,53 @@ class FichaTecnica(QWidget):
         # BOTONES: Ir a inicio + Guardar peso
         # ----------------------------------------------------------
         fila_botones = QHBoxLayout()
-        fila_botones.setSpacing(12)
+        fila_botones.setSpacing(escalar(12))
 
         boton_inicio = QPushButton("Ir a inicio")
-        boton_inicio.setFixedHeight(50)
-        boton_inicio.setStyleSheet("""
-            QPushButton {
+        boton_inicio.setFixedHeight(escalar(50))
+        boton_inicio.setStyleSheet(f"""
+            QPushButton {{
                 background-color: white;
                 color: #115E67;
                 border: 1px solid #D9E2E4;
                 border-radius: 0px;
-                font-size: 15px;
+                font-size: {escalar_fuente(15)}px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #EAF4F5;
-            }
+            }}
         """)
         boton_inicio.clicked.connect(self._volver_a_inicio)
 
         boton_guardar = QPushButton("Imprime")
-        boton_guardar.setFixedHeight(50)
-        boton_guardar.setStyleSheet("""
-            QPushButton {
+        boton_guardar.setFixedHeight(escalar(50))
+        boton_guardar.setStyleSheet(f"""
+            QPushButton {{
                 background-color: #115E67;
                 color: white;
                 border: none;
                 border-radius: 0px;
-                font-size: 15px;
+                font-size: {escalar_fuente(15)}px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #0D4D55;
-            }
-        """) 
-       
+            }}
+        """)
+
         boton_guardar.clicked.connect(self._guardar_peso)
-       
+
         fila_botones.addWidget(boton_inicio)
         fila_botones.addWidget(boton_guardar)
         layout.addLayout(fila_botones)
 
-        self.setLayout(layout_externo)
-
     # ==============================================================
-    # IMAGEN PRINCIPAL (con_arch)
+    # IMAGEN PRINCIPAL
     # ==============================================================
-
     def _crear_imagen_principal(self) -> QFrame:
         marco = QFrame()
-        marco.setFixedSize(300, 260)
+        marco.setFixedSize(escalar(300), escalar(260))
         marco.setStyleSheet("""
             QFrame {
                 background-color: white;
@@ -273,7 +271,7 @@ class FichaTecnica(QWidget):
         """)
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(escalar(8), escalar(8), escalar(8), escalar(8))
 
         etiqueta_imagen = QLabel()
         etiqueta_imagen.setAlignment(Qt.AlignCenter)
@@ -282,18 +280,20 @@ class FichaTecnica(QWidget):
         imagen_bytes = self._normalizar_imagen_bytes(imagen_raw)
 
         pixmap = QPixmap()
-        if imagen_bytes and pixmap.loadFromData(imagen_bytes):  # sin formato forzado
-            pixmap = pixmap.scaled(280, 240, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        if imagen_bytes and pixmap.loadFromData(imagen_bytes):
+            pixmap = pixmap.scaled(
+                escalar(280), escalar(240),
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
             etiqueta_imagen.setPixmap(pixmap)
         else:
             etiqueta_imagen.setText("Sin imagen")
-            etiqueta_imagen.setStyleSheet("color: #999; font-size: 13px;")
+            etiqueta_imagen.setStyleSheet(f"color: #999; font-size: {escalar_fuente(13)}px;")
 
         layout.addWidget(etiqueta_imagen)
         return marco
 
     def _normalizar_imagen_bytes(self, valor):
-        """Convierte lo que venga de la BD a bytes reales, o None si no hay nada usable."""
         if not valor:
             return None
         if isinstance(valor, (bytes, bytearray)):
@@ -301,7 +301,6 @@ class FichaTecnica(QWidget):
         if isinstance(valor, str):
             import base64
             try:
-                # Caso típico: string base64 (con o sin prefijo data:image/...;base64,)
                 if valor.startswith("data:image"):
                     valor = valor.split(",", 1)[1]
                 return base64.b64decode(valor)
@@ -312,7 +311,6 @@ class FichaTecnica(QWidget):
     # ==============================================================
     # INFORMACIÓN DEL PRODUCTO
     # ==============================================================
-
     def _crear_info_producto(self) -> QFrame:
         marco = QFrame()
         marco.setStyleSheet("""
@@ -322,20 +320,22 @@ class FichaTecnica(QWidget):
                 border-radius: 12px;
             }
         """)
-        resultado_sacrificio = ObtenerTipoLimpiezaRepository.obtener_fecha_sacrificio(self,self.lote, self.numEspecie)
+        resultado_sacrificio = ObtenerTipoLimpiezaRepository.obtener_fecha_sacrificio(
+            self, self.lote, self.numEspecie
+        )
 
         self.fecha_sacrificio = resultado_sacrificio.scrfcio if resultado_sacrificio else None
         self.nom_impr_etiq = resultado_sacrificio.nom_impr_etiq if resultado_sacrificio else None
-        print(f"la fecha de sacrificio{self.fecha_sacrificio }")
-        print(f"como llega lo te numero de especie{self.lote, self.numEspecie}")
+
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(escalar(20), escalar(16), escalar(20), escalar(16))
+        layout.setSpacing(escalar(10))
 
         titulo = QLabel("Información del producto")
-        titulo.setStyleSheet("font-size: 15px; font-weight: bold; color: #115E67;")
+        titulo.setStyleSheet(
+            f"font-size: {escalar_fuente(15)}px; font-weight: bold; color: #115E67;"
+        )
         layout.addWidget(titulo)
-
 
         dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion = (
             self._obtener_datos_vencimiento()
@@ -343,39 +343,26 @@ class FichaTecnica(QWidget):
 
         if dias_cong is not None:
             etiqueta_vencimiento = "F.Vto en Congelación:"
-
             self.fecha_vencimiento_str = fecha_vencimiento_congelacion
-
             fecha_vencimiento_str = (
                 fecha_vencimiento_congelacion.strftime("%d/%m/%Y")
-                if fecha_vencimiento_congelacion
-                else "-"
+                if fecha_vencimiento_congelacion else "-"
             )
-
             dias_vencimiento = dias_cong
-
         else:
             etiqueta_vencimiento = "F.Vto en Refrigeración:"
-
             self.fecha_vencimiento_str = fecha_vencimiento_refrigeracion
-
             fecha_vencimiento_str = (
                 fecha_vencimiento_refrigeracion.strftime("%d/%m/%Y")
-                if fecha_vencimiento_refrigeracion
-                else "-"
+                if fecha_vencimiento_refrigeracion else "-"
             )
-
             dias_vencimiento = dias_ref
 
-
         def formatear_fecha(fecha, formato="%d/%m/%Y", valor_defecto="N/A") -> str:
-            """Formatea una fecha de forma segura; si es None, devuelve un valor por defecto."""
             if fecha is None:
                 return valor_defecto
             return fecha.strftime(formato)
-        
-        
-        
+
         datos = [
             [("PLU:", self.producto.get("cdgo_plu", "-")), ("Producto:", self.producto.get("nombre", "-"))],
             [("Especie:", self.especie), ("Empresa:", self.empresa)],
@@ -391,12 +378,15 @@ class FichaTecnica(QWidget):
             fila = QHBoxLayout()
             for etiqueta_texto, valor_texto in grupo:
                 etiqueta = QLabel(etiqueta_texto)
-                etiqueta.setFixedWidth(110)
-                etiqueta.setStyleSheet("color: #666; font-size: 13px;")
+                etiqueta.setMinimumWidth(escalar(90))
+                etiqueta.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+                etiqueta.setStyleSheet(f"color: #666; font-size: {escalar_fuente(13)}px;")
 
                 valor = QLabel(str(valor_texto))
                 valor.setWordWrap(True)
-                valor.setStyleSheet("color: #222; font-size: 13px; font-weight: bold;")
+                valor.setStyleSheet(
+                    f"color: #222; font-size: {escalar_fuente(13)}px; font-weight: bold;"
+                )
 
                 fila.addWidget(etiqueta)
                 fila.addWidget(valor, stretch=1)
@@ -406,9 +396,8 @@ class FichaTecnica(QWidget):
         return marco
 
     # ==============================================================
-    # GALERÍA DE IMÁGENES (con_arch_2 .. con_arch_6)
+    # GALERÍA DE IMÁGENES
     # ==============================================================
-
     def _crear_galeria_imagenes(self) -> QFrame:
         marco = QFrame()
         marco.setStyleSheet("""
@@ -420,15 +409,17 @@ class FichaTecnica(QWidget):
         """)
 
         layout_externo = QVBoxLayout(marco)
-        layout_externo.setContentsMargins(16, 12, 16, 16)
-        layout_externo.setSpacing(10)
+        layout_externo.setContentsMargins(escalar(16), escalar(12), escalar(16), escalar(16))
+        layout_externo.setSpacing(escalar(10))
 
         titulo = QLabel("Imágenes del producto")
-        titulo.setStyleSheet("font-size: 14px; font-weight: bold; color: #115E67;")
+        titulo.setStyleSheet(
+            f"font-size: {escalar_fuente(14)}px; font-weight: bold; color: #115E67;"
+        )
         layout_externo.addWidget(titulo)
 
         fila_miniaturas = QHBoxLayout()
-        fila_miniaturas.setSpacing(12)
+        fila_miniaturas.setSpacing(escalar(12))
 
         if self.producto_completo is not None:
             imagenes_extra = [
@@ -451,7 +442,7 @@ class FichaTecnica(QWidget):
 
     def _crear_miniatura(self, numero: int, imagen_bytes) -> QFrame:
         contenedor = QFrame()
-        contenedor.setFixedSize(90, 90)
+        contenedor.setFixedSize(escalar(90), escalar(90))
         contenedor.setStyleSheet("""
             QFrame {
                 background-color: #F5F8F8;
@@ -461,7 +452,7 @@ class FichaTecnica(QWidget):
         """)
 
         layout = QVBoxLayout(contenedor)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(escalar(4), escalar(4), escalar(4), escalar(4))
 
         etiqueta = QLabel()
         etiqueta.setAlignment(Qt.AlignCenter)
@@ -470,26 +461,29 @@ class FichaTecnica(QWidget):
 
         if datos:
             pixmap = QPixmap()
-            # Sin forzar "JPG": algunas de estas imágenes pueden ser
-            # PNG u otro formato, y loadFromData detecta el formato
-            # solo si no se lo forzamos.
             if pixmap.loadFromData(datos):
-                pixmap = pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pixmap = pixmap.scaled(
+                    escalar(80), escalar(80),
+                    Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
                 etiqueta.setPixmap(pixmap)
             else:
                 etiqueta.setText(str(numero))
-                etiqueta.setStyleSheet("color: #999; font-size: 20px; font-weight: bold;")
+                etiqueta.setStyleSheet(
+                    f"color: #999; font-size: {escalar_fuente(20)}px; font-weight: bold;"
+                )
         else:
             etiqueta.setText(str(numero))
-            etiqueta.setStyleSheet("color: #999; font-size: 20px; font-weight: bold;")
+            etiqueta.setStyleSheet(
+                f"color: #999; font-size: {escalar_fuente(20)}px; font-weight: bold;"
+            )
 
         layout.addWidget(etiqueta)
         return contenedor
 
     # ==============================================================
-    # TIPO DE LIMPIEZA (catálogo dinámico desde tpo_lmpza)
+    # TIPO DE LIMPIEZA
     # ==============================================================
-
     def _crear_seccion_tipo_limpieza(self) -> QFrame:
         marco = QFrame()
         marco.setStyleSheet("""
@@ -501,21 +495,21 @@ class FichaTecnica(QWidget):
         """)
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(16, 12, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(escalar(16), escalar(12), escalar(16), escalar(16))
+        layout.setSpacing(escalar(10))
 
         titulo = QLabel("Nivel de Limpieza")
-        titulo.setStyleSheet("font-size: 14px; font-weight: bold; color: #115E67;")
+        titulo.setStyleSheet(
+            f"font-size: {escalar_fuente(14)}px; font-weight: bold; color: #115E67;"
+        )
         layout.addWidget(titulo)
 
-        # Contenedor donde se dibujarán los botones de la página actual
         self._contenedor_botones_limpieza = QHBoxLayout()
-        self._contenedor_botones_limpieza.setSpacing(10)
+        self._contenedor_botones_limpieza.setSpacing(escalar(10))
         layout.addLayout(self._contenedor_botones_limpieza)
 
-        # Fila de paginación (se crea aparte, debajo de los botones)
         fila_paginacion = QHBoxLayout()
-        fila_paginacion.setSpacing(6)
+        fila_paginacion.setSpacing(escalar(6))
 
         self._btn_primera = QPushButton("<<")
         self._btn_anterior = QPushButton("<")
@@ -525,21 +519,22 @@ class FichaTecnica(QWidget):
 
         for boton in (self._btn_primera, self._btn_anterior, self._btn_siguiente, self._btn_ultima):
             boton.setCursor(Qt.PointingHandCursor)
-            boton.setFixedWidth(36)
-            boton.setStyleSheet("""
-                QPushButton {
+            boton.setFixedWidth(escalar(36))
+            boton.setStyleSheet(f"""
+                QPushButton {{
                     background-color: white;
                     color: #115E67;
                     border: 1px solid #D9E2E4;
-                    border-radius: 6px;
+                    border-radius: {escalar(6)}px;
                     font-weight: 600;
-                }
-                QPushButton:hover { background-color: #EAF4F5; }
-                QPushButton:disabled { color: #BBB; border-color: #EEE; }
+                    font-size: {escalar_fuente(13)}px;
+                }}
+                QPushButton:hover {{ background-color: #EAF4F5; }}
+                QPushButton:disabled {{ color: #BBB; border-color: #EEE; }}
             """)
 
         self._lbl_pagina.setAlignment(Qt.AlignCenter)
-        self._lbl_pagina.setStyleSheet("color: #115E67; font-size: 12px;")
+        self._lbl_pagina.setStyleSheet(f"color: #115E67; font-size: {escalar_fuente(12)}px;")
 
         self._btn_primera.clicked.connect(lambda: self._ir_a_pagina(0))
         self._btn_anterior.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza - 1))
@@ -555,7 +550,6 @@ class FichaTecnica(QWidget):
         fila_paginacion.addStretch()
         layout.addLayout(fila_paginacion)
 
-        # --- Carga de datos ---
         try:
             repositorio_limpieza = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
             self._tipos_limpieza = repositorio_limpieza.obtener_tipos_limpieza()
@@ -567,67 +561,61 @@ class FichaTecnica(QWidget):
         self._grupo_limpieza.setExclusive(True)
         self._grupo_limpieza.buttonClicked.connect(self._tipo_limpieza_elegido)
 
-        self._tamano_pagina_limpieza = 8  # <-- ajusta cuántos botones caben por fila
+        self._tamano_pagina_limpieza = 8
         self._pagina_actual_limpieza = 0
         self._total_paginas_limpieza = max(
-            1, -(-len(self._tipos_limpieza) // self._tamano_pagina_limpieza)  # ceil
+            1, -(-len(self._tipos_limpieza) // self._tamano_pagina_limpieza)
         )
 
         self._ir_a_pagina(0)
 
         return marco
 
-
     def _ir_a_pagina(self, numero_pagina: int):
-        """Recalcula límites, limpia los botones actuales y dibuja los de la nueva página."""
         numero_pagina = max(0, min(numero_pagina, self._total_paginas_limpieza - 1))
         self._pagina_actual_limpieza = numero_pagina
 
-        # 1. Sacar del QButtonGroup y borrar los botones actuales
         for boton in list(self._grupo_limpieza.buttons()):
             self._grupo_limpieza.removeButton(boton)
             self._contenedor_botones_limpieza.removeWidget(boton)
             boton.deleteLater()
 
-        # 2. Calcular el slice de datos para esta página
         inicio = numero_pagina * self._tamano_pagina_limpieza
         fin = inicio + self._tamano_pagina_limpieza
         tipos_pagina = self._tipos_limpieza[inicio:fin]
 
-        # 3. Crear los botones de la página actual
         if not tipos_pagina:
             etiqueta_vacio = QLabel("No hay tipos de limpieza configurados.")
-            etiqueta_vacio.setStyleSheet("color: #999; font-size: 13px;")
+            etiqueta_vacio.setStyleSheet(f"color: #999; font-size: {escalar_fuente(13)}px;")
             self._contenedor_botones_limpieza.addWidget(etiqueta_vacio)
         else:
             for tipo in tipos_pagina:
                 boton = QPushButton(f"{tipo.tpo_lmpza}")
                 boton.setCheckable(True)
                 boton.setCursor(Qt.PointingHandCursor)
-                boton.setMinimumHeight(42)
+                boton.setMinimumHeight(escalar(42))
                 boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 boton.setProperty("tpo_lmpza", tipo.tpo_lmpza)
                 boton.setProperty("nombre_limpieza", tipo.nmbre)
-                boton.setStyleSheet("""
-                    QPushButton {
+                boton.setStyleSheet(f"""
+                    QPushButton {{
                         background-color: white;
                         color: #115E67;
                         border: 1px solid #D9E2E4;
-                        border-radius: 10px;
-                        font-size: 13px;
+                        border-radius: {escalar(10)}px;
+                        font-size: {escalar_fuente(13)}px;
                         font-weight: 600;
-                    }
-                    QPushButton:hover { background-color: #EAF4F5; }
-                    QPushButton:checked {
+                    }}
+                    QPushButton:hover {{ background-color: #EAF4F5; }}
+                    QPushButton:checked {{
                         background-color: #115E67;
                         color: white;
                         border: 1px solid #115E67;
-                    }
+                    }}
                 """)
                 self._grupo_limpieza.addButton(boton)
                 self._contenedor_botones_limpieza.addWidget(boton)
 
-        # 4. Actualizar etiqueta e (des)habilitar flechas
         self._lbl_pagina.setText(f"{self._pagina_actual_limpieza + 1} / {self._total_paginas_limpieza}")
         self._btn_primera.setEnabled(self._pagina_actual_limpieza > 0)
         self._btn_anterior.setEnabled(self._pagina_actual_limpieza > 0)
@@ -636,10 +624,10 @@ class FichaTecnica(QWidget):
 
     def _tipo_limpieza_elegido(self, boton):
         self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
-    # ==============================================================
-    # BÁSCULA - PESO (placeholder, sin hardware conectado todavía)
-    # ==============================================================
 
+    # ==============================================================
+    # BÁSCULA - PESO
+    # ==============================================================
     def _crear_bascula(self) -> QFrame:
         marco = QFrame()
         marco.setStyleSheet("""
@@ -651,58 +639,53 @@ class FichaTecnica(QWidget):
         """)
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(8)
+        layout.setContentsMargins(escalar(20), escalar(16), escalar(20), escalar(16))
+        layout.setSpacing(escalar(8))
 
         titulo = QLabel("Báscula - Peso")
-        titulo.setStyleSheet("font-size: 15px; font-weight: bold; color: #115E67;")
+        titulo.setStyleSheet(
+            f"font-size: {escalar_fuente(15)}px; font-weight: bold; color: #115E67;"
+        )
         layout.addWidget(titulo)
 
         self.etiqueta_peso = QLabel(f"{self.peso_neto_kg:.3f}")
         self.etiqueta_peso.setAlignment(Qt.AlignCenter)
-        self.etiqueta_peso.setStyleSheet("""
+        self.etiqueta_peso.setStyleSheet(f"""
             background-color: #E8F0EF;
             color: #115E67;
-            font-size: 40px;
+            font-size: {escalar_fuente(40)}px;
             font-weight: bold;
             font-family: 'Courier New';
-            border-radius: 8px;
-            padding: 10px;
+            border-radius: {escalar(8)}px;
+            padding: {escalar(10)}px;
         """)
         layout.addWidget(self.etiqueta_peso)
-        """
+
         self.etiqueta_peso_neto = QLabel(f"Peso neto        {self.peso_neto_kg:.3f} kg")
-        self.etiqueta_peso_neto.setStyleSheet("color: #444; font-size: 13px;")
-        layout.addWidget(self.etiqueta_peso_neto)
-        self.etiqueta_peso.setText("prueba123")
-        layout.addStretch()
-        return marco
-        """
-        self.etiqueta_peso_neto = QLabel(f"Peso neto        {self.peso_neto_kg:.3f} kg")
-        self.etiqueta_peso_neto.setStyleSheet("color: #444; font-size: 13px;")
+        self.etiqueta_peso_neto.setStyleSheet(f"color: #444; font-size: {escalar_fuente(13)}px;")
         layout.addWidget(self.etiqueta_peso_neto)
 
-        # --- Selector de impresora ---
         etiqueta_impresora = QLabel("Impresora:")
-        etiqueta_impresora.setStyleSheet("color: #666; font-size: 13px; margin-top: 6px;")
+        etiqueta_impresora.setStyleSheet(
+            f"color: #666; font-size: {escalar_fuente(13)}px; margin-top: {escalar(6)}px;"
+        )
         layout.addWidget(etiqueta_impresora)
 
         self.combo_impresora = QComboBox()
-        self.combo_impresora.setStyleSheet("""
-            QComboBox {
+        self.combo_impresora.setStyleSheet(f"""
+            QComboBox {{
                 background-color: white;
                 border: 1px solid #D9E2E4;
-                border-radius: 6px;
-                padding: 6px;
-                font-size: 13px;
+                border-radius: {escalar(6)}px;
+                padding: {escalar(6)}px;
+                font-size: {escalar_fuente(13)}px;
                 color: #222;
-            }
+            }}
         """)
 
         nombres_impresoras = [impresora.printerName() for impresora in QPrinterInfo.availablePrinters()]
         self.combo_impresora.addItems(nombres_impresoras)
 
-        # Preseleccionar: Godex si existe, si no la impresora por defecto de Windows
         impresora_por_defecto = QPrinterInfo.defaultPrinter().printerName()
         if "Godex ZX420i GZPL" in nombres_impresoras:
             self.combo_impresora.setCurrentText("Godex ZX420i GZPL")
@@ -718,11 +701,12 @@ class FichaTecnica(QWidget):
         layout.addStretch()
         return marco
 
+    def _on_impresora_cambiada(self, nombre_impresora: str) -> None:
+        self.impresora_seleccionada = nombre_impresora
+
     # ==============================================================
     # DATOS ADICIONALES
     # ==============================================================
-    def _on_impresora_cambiada(self, nombre_impresora: str) -> None:
-        self.impresora_seleccionada = nombre_impresora
     def _crear_datos_adicionales(self) -> QFrame:
         marco = QFrame()
         marco.setStyleSheet("""
@@ -734,12 +718,12 @@ class FichaTecnica(QWidget):
         """)
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(escalar(20), escalar(16), escalar(20), escalar(16))
+        layout.setSpacing(escalar(10))
 
         self.lbl_vista_previa_etiqueta = QLabel()
         self.lbl_vista_previa_etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_vista_previa_etiqueta.setMinimumHeight(150)
+        self.lbl_vista_previa_etiqueta.setMinimumHeight(escalar(150))
         layout.addWidget(self.lbl_vista_previa_etiqueta)
 
         layout.addStretch()
@@ -747,21 +731,22 @@ class FichaTecnica(QWidget):
 
     def actualizar_vista_previa(self, datos: DatosEtiquetaFrescas) -> None:
         if not shiboken6.isValid(self):
-            return  # el widget ya fue destruido, no hacer nada
+            return
 
         pixmap = generar_vista_previa_pixmap(datos)
 
-        ANCHO_MAX_PREVIEW = 575
-        ALTO_MAX_PREVIEW = 150
+        ancho_max_preview = escalar(575)
+        alto_max_preview = escalar(150)
 
         pixmap_escalado = pixmap.scaled(
-            ANCHO_MAX_PREVIEW,
-            ALTO_MAX_PREVIEW,
+            ancho_max_preview,
+            alto_max_preview,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
 
         self.lbl_vista_previa_etiqueta.setPixmap(pixmap_escalado)
+
     def _construir_parametros_etiqueta(self) -> dict:
         producto_para_etiqueta = self.producto_completo or SimpleNamespace(
             cdgo_plu=self.producto.get("cdgo_plu"),
@@ -783,56 +768,43 @@ class FichaTecnica(QWidget):
             numero_ticket=self.numero_ticket,
         )
 
-
     def _guardar_peso(self):
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
         imprimir_etiqueta_frescas(datos, self.impresora_seleccionada)
         registrar_historico_pesaje(
-        self._parametros_etiqueta_actuales,
-        oprdor=self.usuario.nombre_usuario + "-" + CODIGO_PROCESO_DEFAULT,
-        nmro_psta = self.numero_ticket,
-    )
-        
+            self._parametros_etiqueta_actuales,
+            oprdor=self.usuario.nombre_usuario + "-" + CODIGO_PROCESO_DEFAULT,
+            nmro_psta=self.numero_ticket,
+        )
+
     def _limpiar_y_volver(self):
         bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
         bascula_service.detener()
-        self._app.mostrar_seleccion_sin_recargar()       
-         
+        self._app.mostrar_seleccion_sin_recargar()
+
     def closeEvent(self, event):
         self._limpiar_y_volver()
         super().closeEvent(event)
 
     def _volver_a_seleccion_de_producto(self):
         bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
-        self._limpiar_y_volver
+        self._limpiar_y_volver()
         bascula_service.detener()
         self._app.mostrar_seleccion_sin_recargar()
 
     def _on_peso_actualizado(self, nuevo_peso: float) -> None:
         self.peso_neto_kg = nuevo_peso
 
-        self.etiqueta_peso.setText(
-            f"{nuevo_peso:.3f}"
-        )
+        self.etiqueta_peso.setText(f"{nuevo_peso:.3f}")
+        self.etiqueta_peso_neto.setText(f"Peso neto        {nuevo_peso:.3f} kg ")
 
-        self.etiqueta_peso_neto.setText(
-            f"Peso neto        {nuevo_peso:.3f} kg "
-        )
-
-        if not getattr(
-            self,
-            "_parametros_etiqueta_actuales",
-            None
-        ):
+        if not getattr(self, "_parametros_etiqueta_actuales", None):
             return
 
-        datos = construir_datos_etiqueta(
-            **self._parametros_etiqueta_actuales
-        )
-
+        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
         self.actualizar_vista_previa(datos)
-  
+
     def _volver_a_inicio(self):
         bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
         bascula_service.detener()

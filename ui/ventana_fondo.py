@@ -20,7 +20,7 @@ from PySide6.QtCore import (
 
 from PySide6.QtGui import QPixmap
 from utils.rutas import ruta_recurso
-from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente
+from utils.ventana_utils import aplicar_tamano
 
 
 VERSION_APP = "v1.0.0"
@@ -32,10 +32,10 @@ class VentanaFondo(QWidget):
         super().__init__()
 
         self.setWindowTitle("Etiquetas 2 en 1")
-
-        aplicar_tamano(
-            self,
-            modo="completo"
+        self.setWindowFlags(
+            Qt.Window
+            | Qt.WindowMinimizeButtonHint
+            | Qt.WindowCloseButtonHint
         )
 
         # ==========================================================
@@ -174,7 +174,10 @@ class VentanaFondo(QWidget):
     # ==============================================================
     # AJUSTAR IMAGEN AL TAMAÑO DE LA VENTANA
     # ==============================================================
-
+        aplicar_tamano(
+                    self,
+                    modo="completo"
+                )
     def _ajustar_fondo(self):
         if not hasattr(self, "imagen_fondo") or not hasattr(self, "capa_oscura"):
          return

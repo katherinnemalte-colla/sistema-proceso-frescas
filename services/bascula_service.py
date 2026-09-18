@@ -1,10 +1,12 @@
 import logging
 import random
 import re
-from typing import Optional
-
+import socket
+from typing import Callable, Optional
+import os
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
-
+from repositories.configuracion_repository import obtener_puerto_com
+from models.database import obtener_conexion
 try:
     import serial
     from serial.tools import list_ports
@@ -20,8 +22,16 @@ logger = logging.getLogger(__name__)
 # ======================================================================
 # CONFIGURACIÓN
 # ======================================================================
-
 BAUDIOS = 9600
+
+# Puerto fijo de producción. Confirma este valor en el Administrador de dispositivos.
+COM_BASCULA_FALLBACK = "COM5"
+
+# Consulta de configuración del puerto por equipo.
+CODIGO_PROCESO_DEFAULT = socket.gethostname()
+
+# En producción debe permanecer en False para nunca imprimir pesos aleatorios.
+MODO_PRUEBA = False
 
 INTERVALO_MODO_PRUEBA_MS = 2000
 
@@ -415,8 +425,12 @@ class BasculaService(QObject):
     # CONSTRUCTOR
     # ------------------------------------------------------------------
 
-    def __init__(self):
+    def __init__(self, obtener_conexion: Optional[Callable] = None):
         super().__init__()
+
+        # Función inyectada desde la aplicación para obtener la conexión SQL.
+        # Ejemplo: BasculaService(obtener_conexion=_crear_conexion)
+        self._obtener_conexion = obtener_conexion
 
         self._ultimo_peso: Optional[float] = None
 
@@ -453,86 +467,68 @@ class BasculaService(QObject):
     # ==================================================================
     # INICIAR
     # ==================================================================
+    def _obtener_puerto_configurado(self) -> str:
+        """
+        Obtiene el puerto configurado en BASICAS para este equipo,
+        delegando la consulta al repositorio.
+
+        Si la consulta falla o no devuelve información, se utiliza
+        COM_BASCULA_FALLBACK como respaldo controlado.
+        """
+
+        puerto = obtener_puerto_com(
+            obtener_conexion=self._obtener_conexion,
+            codigo_proceso=CODIGO_PROCESO_DEFAULT,
+        )
+
+        print(f"[BASCULA] Equipo: {CODIGO_PROCESO_DEFAULT} -> puerto obtenido de BASICAS: {puerto}")
+
+        if puerto is None:
+            mensaje = (
+                f"No se pudo consultar el puerto configurado en BASICAS. "
+                f"Se intentará {COM_BASCULA_FALLBACK}."
+            )
+            logger.warning(mensaje)
+            print(f"[BASCULA] {mensaje}")
+            self.error_bascula.emit(mensaje)
+            return COM_BASCULA_FALLBACK
+
+        return puerto
 
     def iniciar(self) -> None:
         """
-        Inicia el servicio.
+        Inicia la báscula usando únicamente COM_BASCULA.
 
-        Primero intenta encontrar automáticamente la báscula real,
-        probando todos los puertos serie disponibles.
+        No se recorren todos los puertos del equipo y no se bloquea
+        la interfaz buscando dispositivos que no son la báscula.
+        La conexión real se realiza dentro de QThread.
 
-        Si no encuentra una báscula:
-
-            REAL -> PRUEBA
-
-        El modo prueba utiliza el QTimer.
+        El modo de prueba solo se activa si MODO_PRUEBA=True.
         """
 
-        # Si ya está funcionando, no hacemos nada.
         if self._modo is not None:
-
             logger.debug(
                 "La báscula ya está activa en modo: %s",
                 self._modo,
             )
-
             return
 
-        # --------------------------------------------------------------
-        # PySerial no disponible
-        # --------------------------------------------------------------
+        if MODO_PRUEBA:
+            mensaje = "Modo de prueba activado por configuración."
+            logger.warning(mensaje)
+            self.error_bascula.emit(mensaje)
+            self._activar_modo_prueba()
+            return
 
         if serial is None:
-
-            mensaje = (
-                "PySerial no está instalado. "
-                "Se utilizará el modo de prueba."
-            )
-
-            logger.warning(
-                mensaje
-            )
-
-            self.error_bascula.emit(
-                mensaje
-            )
-
-            self._activar_modo_prueba()
-
+            mensaje = "PySerial no está instalado. No se iniciará la báscula."
+            logger.error(mensaje)
+            self.error_bascula.emit(mensaje)
             return
 
-        # --------------------------------------------------------------
-        # Buscar automáticamente la báscula
-        # --------------------------------------------------------------
-
-        puerto_bascula = _buscar_puerto_bascula()
-
-        # --------------------------------------------------------------
-        # No se encontró
-        # --------------------------------------------------------------
-
-        if puerto_bascula is None:
-
-            mensaje = (
-                "No se encontró ninguna báscula. "
-                "Se activará el modo de prueba."
-            )
-
-            logger.warning(
-                mensaje
-            )
-
-            self.error_bascula.emit(
-                mensaje
-            )
-
-            self._activar_modo_prueba()
-
-            return
-
-        # --------------------------------------------------------------
-        # Crear hilo de lectura
-        # --------------------------------------------------------------
+        # El puerto se obtiene desde BASICAS según el nombre del equipo.
+        # Si la consulta falla, el método utiliza COM5 como respaldo.
+        puerto_bascula = self._obtener_puerto_configurado()
 
         self._hilo = _HiloLecturaBascula(
             puerto=puerto_bascula,
@@ -540,25 +536,15 @@ class BasculaService(QObject):
             parent=self,
         )
 
-        self._hilo.peso_leido.connect(
-            self._on_peso_leido
-        )
+        self._hilo.peso_leido.connect(self._on_peso_leido)
+        self._hilo.error_conexion.connect(self._on_error_conexion)
+        self._hilo.finished.connect(self._on_hilo_finalizado)
 
-        self._hilo.error_conexion.connect(
-            self._on_error_conexion
-        )
-
-        self._hilo.finished.connect(
-            self._on_hilo_finalizado
-        )
-
-        # El modo se establece antes de iniciar el hilo.
         self._modo = "real"
-
         self._hilo.start()
 
         logger.info(
-            "Báscula iniciada en modo REAL. Puerto: %s",
+            "Intentando iniciar báscula real en puerto fijo: %s",
             puerto_bascula,
         )
 
@@ -621,8 +607,10 @@ class BasculaService(QObject):
 
         self._ultimo_peso = None
 
-        # Activar automáticamente modo prueba.
-        self._activar_modo_prueba()
+        # No activar pesos aleatorios automáticamente en producción.
+        # Solo se permite el modo de prueba mediante MODO_PRUEBA=True.
+        if MODO_PRUEBA:
+            self._activar_modo_prueba()
 
     # ==================================================================
     # FINALIZACIÓN DEL HILO
@@ -851,4 +839,4 @@ class BasculaService(QObject):
 # INSTANCIA ÚNICA
 # ======================================================================
 
-bascula_service = BasculaService()
+bascula_service = BasculaService(obtener_conexion=obtener_conexion)
