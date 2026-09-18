@@ -18,6 +18,7 @@ class ControladorApp:
         self.ventana_app = None
 
         self.ventana_fondo.show()
+        QApplication.processEvents()
         self._mostrar_login()
 
     def _mostrar_login(self):
