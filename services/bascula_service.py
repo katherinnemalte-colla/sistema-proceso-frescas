@@ -53,7 +53,7 @@ INTENTOS_LECTURA_BUSQUEDA = 5
 # quedarse esperando indefinidamente en un puerto que no es la báscula.
 TIMEOUT_BUSQUEDA_S = 2
 
-
+INTERVALO_RECONEXION_MS = 5000
 # ======================================================================
 # PARSEO DE LA TRAMA
 # ======================================================================
@@ -435,10 +435,16 @@ class BasculaService(QObject):
         self._ultimo_peso: Optional[float] = None
 
         self._modo: Optional[str] = None
+        
+        self._timer_prueba: Optional[QTimer] = None
 
         self._hilo: Optional[_HiloLecturaBascula] = None
 
         self._timer_prueba: Optional[QTimer] = None
+        
+         # Nuevo: control de reconexión automática.
+        self._timer_reconexion: Optional[QTimer] = None
+        self._desconexion_manual = False
 
     # ==================================================================
     # PROPIEDADES
@@ -496,22 +502,13 @@ class BasculaService(QObject):
         return puerto
 
     def iniciar(self) -> None:
-        """
-        Inicia la báscula usando únicamente COM_BASCULA.
-
-        No se recorren todos los puertos del equipo y no se bloquea
-        la interfaz buscando dispositivos que no son la báscula.
-        La conexión real se realiza dentro de QThread.
-
-        El modo de prueba solo se activa si MODO_PRUEBA=True.
-        """
-
         if self._modo is not None:
-            logger.debug(
-                "La báscula ya está activa en modo: %s",
-                self._modo,
-            )
+            logger.debug("La báscula ya está activa en modo: %s", self._modo)
             return
+
+        # Estamos intentando activamente: no es una desconexión "dejada así".
+        self._desconexion_manual = False
+        self._detener_timer_reconexion()
 
         if MODO_PRUEBA:
             mensaje = "Modo de prueba activado por configuración."
@@ -526,8 +523,6 @@ class BasculaService(QObject):
             self.error_bascula.emit(mensaje)
             return
 
-        # El puerto se obtiene desde BASICAS según el nombre del equipo.
-        # Si la consulta falla, el método utiliza COM5 como respaldo.
         puerto_bascula = self._obtener_puerto_configurado()
 
         self._hilo = _HiloLecturaBascula(
@@ -543,10 +538,34 @@ class BasculaService(QObject):
         self._modo = "real"
         self._hilo.start()
 
-        logger.info(
-            "Intentando iniciar báscula real en puerto fijo: %s",
-            puerto_bascula,
-        )
+        logger.info("Intentando iniciar báscula real en puerto fijo: %s", puerto_bascula)
+        
+    def _programar_reconexion(self) -> None:
+        if self._timer_reconexion is None:
+            self._timer_reconexion = QTimer(self)
+            self._timer_reconexion.setInterval(INTERVALO_RECONEXION_MS)
+            self._timer_reconexion.timeout.connect(self._intentar_reconectar)
+
+        if not self._timer_reconexion.isActive():
+            self._timer_reconexion.start()
+            logger.info(
+                "Reintentando conexión con la báscula cada %d ms.",
+                INTERVALO_RECONEXION_MS,
+            )
+
+
+    def _intentar_reconectar(self) -> None:
+        if self._desconexion_manual or self._modo is not None:
+            self._detener_timer_reconexion()
+            return
+
+        logger.info("Intentando reconectar la báscula...")
+        self.iniciar()
+
+
+    def _detener_timer_reconexion(self) -> None:
+        if self._timer_reconexion is not None and self._timer_reconexion.isActive():
+            self._timer_reconexion.stop()
 
     # ==================================================================
     # LECTURA REAL
@@ -582,35 +601,25 @@ class BasculaService(QObject):
     # ERROR DE CONEXIÓN
     # ==================================================================
 
-    def _on_error_conexion(
-        self,
-        mensaje: str,
-    ) -> None:
-        """
-        Maneja un error de conexión.
+    def _on_error_conexion(self, mensaje: str) -> None:
+        logger.error("No se pudo conectar con la báscula: %s", mensaje)
 
-        Se conserva el error y posteriormente se activa el modo prueba.
-        """
+        mensaje_usuario = f"Báscula desconectada: {mensaje}"
+        self.error_bascula.emit(mensaje_usuario)
 
-        logger.error(
-            "No se pudo conectar con la báscula: %s",
-            mensaje,
-        )
-
-        # Informar a la interfaz del error real.
-        self.error_bascula.emit(
-            mensaje
-        )
-
-        # El modo real dejó de funcionar.
         self._modo = None
-
         self._ultimo_peso = None
 
-        # No activar pesos aleatorios automáticamente en producción.
-        # Solo se permite el modo de prueba mediante MODO_PRUEBA=True.
+        # Refleja la desconexión en la UI: el peso deja de ser válido.
+        self.peso_actualizado.emit(0.0)
+
         if MODO_PRUEBA:
             self._activar_modo_prueba()
+            return
+
+        # Reintenta solo si nadie salió intencionalmente de la pantalla.
+        if not self._desconexion_manual:
+            self._programar_reconexion()
 
     # ==================================================================
     # FINALIZACIÓN DEL HILO
@@ -771,60 +780,21 @@ class BasculaService(QObject):
     # ==================================================================
 
     def detener(self) -> None:
-        """
-        DETIENE COMPLETAMENTE EL SERVICIO.
+        logger.info("Deteniendo servicio de báscula...")
 
-        Debe llamarse cuando se sale de Ficha Técnica.
-
-        Detiene:
-
-            - QTimer del modo prueba.
-            - Hilo de lectura real.
-            - Estado del servicio.
-            - Último peso almacenado.
-
-        Después de llamar detener(), el servicio puede volver a
-        iniciarse normalmente al entrar nuevamente a Ficha Técnica.
-        """
-
-        logger.info(
-            "Deteniendo servicio de báscula..."
-        )
-
-        # --------------------------------------------------------------
-        # 1. DETENER TIMER DE PRUEBA
-        # --------------------------------------------------------------
+        self._desconexion_manual = True
+        self._detener_timer_reconexion()
 
         if self._timer_prueba is not None:
-
             if self._timer_prueba.isActive():
-
                 self._timer_prueba.stop()
-
-                logger.info(
-                    "QTimer de modo prueba detenido."
-                )
-
-        # --------------------------------------------------------------
-        # 2. DETENER HILO REAL
-        # --------------------------------------------------------------
+                logger.info("QTimer de modo prueba detenido.")
 
         if self._hilo is not None:
-
             hilo = self._hilo
-
-            # Quitamos la referencia antes de detenerlo.
             self._hilo = None
-
             hilo.detener()
-
-            logger.info(
-                "Hilo de báscula real detenido."
-            )
-
-        # --------------------------------------------------------------
-        # 3. LIMPIAR ESTADO
-        # --------------------------------------------------------------
+            logger.info("Hilo de báscula real detenido.")
 
         self._modo = None
 
