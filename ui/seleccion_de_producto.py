@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QGraphicsDropShadowEffect,
 )
-from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,_icono_pixmap
+from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido,_icono_pixmap
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository, TAMANO_PAGINA
 from utils import fechas
 from utils.colores import Colores
@@ -153,14 +153,14 @@ class ProductoWidget(QFrame):
         etiqueta_plu = QLabel(f"PLU {producto.cdgo_plu}")
         etiqueta_plu.setAlignment(Qt.AlignCenter)
         etiqueta_plu.setStyleSheet(
-            f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: 11px; letter-spacing: 0.5px;"
+            f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: {escalar_fuente(11)}px; letter-spacing: 0.5px;"
         )
 
         etiqueta_nombre = QLabel(producto.nom_prog.upper())
         etiqueta_nombre.setAlignment(Qt.AlignCenter)
         etiqueta_nombre.setWordWrap(True)
         etiqueta_nombre.setStyleSheet(
-            f"color: {COLOR_PRIMARIO}; font-size: 14px; font-weight: 700;"
+            f"color: {COLOR_PRIMARIO}; font-size: {escalar_fuente(14)}px; font-weight: 700;"
         )
 
         bloque_texto.addWidget(etiqueta_plu)
@@ -310,7 +310,7 @@ class SeleccionDeProducto(QWidget):
                 color: white;
                 border: 1px solid #D9E2E4;
                 border-radius: 0px;
-                font-size: 13px;
+                font-size: {escalar_fuente(13)}px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -402,13 +402,13 @@ class SeleccionDeProducto(QWidget):
 
         etq_titulo = QLabel(etiqueta)
         etq_titulo.setStyleSheet(
-            f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: 10px; letter-spacing: 1px; "
+            f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: {escalar_fuente(10)}px; letter-spacing: 1px; "
             "font-weight: 600;"
         )
 
         etq_valor = QLabel(valor)
         etq_valor.setStyleSheet(
-            f"color: {COLOR_PRIMARIO}; font-size: 17px; font-weight: 700;"
+            f"color: {COLOR_PRIMARIO}; font-size: {escalar_fuente(17)}px; font-weight: 700;"
         )
 
         bloque_texto.addWidget(etq_titulo)
@@ -454,7 +454,7 @@ class SeleccionDeProducto(QWidget):
             circulo_buscar.setPixmap(icono_buscar)
 
         etiqueta = QLabel("Filtro por N° PLU")
-        etiqueta.setStyleSheet(f"color: {COLOR_PRIMARIO}; font-weight: 700; font-size: 13px;")
+        etiqueta.setStyleSheet(f"color: {COLOR_PRIMARIO}; font-weight: 700; font-size: {escalar_fuente(13)}px;")
 
         self.campo_filtro_plu = QLineEdit()
         self.campo_filtro_plu.setStyleSheet(
@@ -463,7 +463,7 @@ class SeleccionDeProducto(QWidget):
                 border: none;
                 border-left: 1px solid {COLOR_BORDE};
                 padding: 6px 12px;
-                font-size: 13px;
+                font-size: {escalar_fuente(13)}px;
             }}
             """
         )
@@ -497,7 +497,7 @@ class SeleccionDeProducto(QWidget):
 
         titulo = QLabel("SELECCIONE UN PRODUCTO")
         titulo.setStyleSheet(
-            f"color: {COLOR_PRIMARIO}; font-size: 16px; font-weight: 700; letter-spacing: 1px;"
+            f"color: {COLOR_PRIMARIO}; font-size: {escalar_fuente(16)}px; font-weight: 700; letter-spacing: 1px;"
         )
 
         layout.addStretch(1)
@@ -726,7 +726,7 @@ class SeleccionDeProducto(QWidget):
                 widget.deleteLater()
         mensaje = QLabel("No se encontraron productos.")
         mensaje.setAlignment(Qt.AlignCenter)
-        mensaje.setStyleSheet(f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: 14px; margin: 24px;")
+        mensaje.setStyleSheet(f"color: {COLOR_TEXTO_SECUNDARIO}; font-size: {escalar_fuente(14)}px; margin: 24px;")
         self._layout_grilla.addWidget(mensaje, 0, 0, 1, COLUMNAS_GRILLA)
 
     # ------------------------------------------------------------------

@@ -17,7 +17,7 @@ from PySide6.QtCore import (
     QDateTime,
     QLocale
 )
-
+from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido
 from PySide6.QtGui import QPixmap
 from utils.rutas import ruta_recurso
 from utils.ventana_utils import aplicar_tamano
@@ -86,9 +86,9 @@ class VentanaFondo(QWidget):
             Qt.AlignLeft | Qt.AlignVCenter
         )
 
-        self.etiqueta_reloj.setStyleSheet("""
+        self.etiqueta_reloj.setStyleSheet(f"""
             color: white;
-            font-size: 18px;
+            font-size: {escalar_fuente(18)}px;
             font-weight: 500;
             background: transparent;
         """)
@@ -105,9 +105,9 @@ class VentanaFondo(QWidget):
             Qt.AlignRight | Qt.AlignVCenter
         )
 
-        self.etiqueta_version.setStyleSheet("""
+        self.etiqueta_version.setStyleSheet(f"""
             color: #C5D4D6;
-            font-size: 12px;
+            font-size: {escalar_fuente(12)}px;
             background: transparent;
         """)
 

@@ -155,7 +155,7 @@ class VentanaPrincipal(QWidget):
 
         titulo.setAlignment(Qt.AlignCenter)
         titulo.setStyleSheet(
-            "color: #115E67; font-size: 22px; font-weight: 700; "
+            f"color: #115E67; font-size:{escalar_fuente(22)}px; font-weight: 700; "
             "letter-spacing: 0.5px;"
         )
 
@@ -167,8 +167,8 @@ class VentanaPrincipal(QWidget):
 
         subtitulo.setAlignment(Qt.AlignCenter)
 
-        subtitulo.setStyleSheet("""
-            font-size: 14px;
+        subtitulo.setStyleSheet(f"""
+            font-size: {escalar_fuente(14)}px;
             color: #8A9A9C;
         """)
 
@@ -188,7 +188,7 @@ class VentanaPrincipal(QWidget):
         columna_fecha.setSpacing(6)
 
         etiqueta_fecha = QLabel("Fecha de produccion")
-        etiqueta_fecha.setStyleSheet("font-size: 13px; color: #444;")
+        etiqueta_fecha.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
 
         self.campo_fecha = QDateEdit()
 
@@ -218,7 +218,7 @@ class VentanaPrincipal(QWidget):
         columna_lote.setSpacing(6)
 
         etiqueta_lote = QLabel("Lote a trabajar")
-        etiqueta_lote.setStyleSheet("font-size: 13px; color: #444;")
+        etiqueta_lote.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
 
         self.campo_lote = QComboBox()
 
@@ -239,7 +239,7 @@ class VentanaPrincipal(QWidget):
         columna_empresa.setSpacing(6)
 
         etiqueta_empresa = QLabel("Empresa")
-        etiqueta_empresa.setStyleSheet("font-size: 13px; color: #444;")
+        etiqueta_empresa.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
 
         self.campo_empresa = QLineEdit()
         self.campo_empresa.setPlaceholderText("Ingrese el número de empresa")
@@ -268,7 +268,7 @@ class VentanaPrincipal(QWidget):
         etiqueta_especie = QLabel("Especie de animal")
         etiqueta_especie.setAlignment(Qt.AlignCenter)
         etiqueta_especie.setStyleSheet(
-            "font-size: 13px; color: #444; font-weight: 600;"
+            f"font-size: {escalar_fuente(13)}px; color: #444; font-weight: 600;"
         )
 
         layout.addWidget(etiqueta_especie)
@@ -340,17 +340,17 @@ class VentanaPrincipal(QWidget):
         boton.setMinimumSize(220, 46)
         boton.setMaximumWidth(320)
         boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        boton.setStyleSheet("""
-            QPushButton {
+        boton.setStyleSheet(f"""
+            QPushButton {{
                 background-color: #1E6FD9;
                 color: white;
-                font-size: 15px;
+                font-size: {escalar_fuente(15)}px;
                 font-weight: bold;
                 border: none;
                 border-radius: 10px;
-            }
-            QPushButton:hover { background-color: #1A62BE; }
-            QPushButton:pressed { background-color: #164F9C; }
+            }}
+            QPushButton:hover {{ background-color: #1A62BE; }}
+            QPushButton:pressed {{ background-color: #164F9C; }}
         """)
         boton.clicked.connect(
             self._continuar
@@ -371,7 +371,7 @@ class VentanaPrincipal(QWidget):
         self._etiqueta_tipo_pieza = QLabel("Seleccione la parte del animal")
         self._etiqueta_tipo_pieza.setAlignment(Qt.AlignCenter)
         self._etiqueta_tipo_pieza.setStyleSheet(
-            "font-size: 13px; color: #444; font-weight: 600;"
+            f"font-size: {escalar_fuente(13)}px; color: #444; font-weight: 600;"
         )
         layout_panel.addWidget(self._etiqueta_tipo_pieza)
 
@@ -406,7 +406,7 @@ class VentanaPrincipal(QWidget):
                 QPushButton {{
                     background-color: {color};
                     color: white;
-                    font-size: 15px;
+                    font-size: {escalar_fuente(15)}px;
                     font-weight: 700;
                     border: none;
                     border-radius: 10px;
@@ -467,7 +467,7 @@ class VentanaPrincipal(QWidget):
         else:
             # Fallback si el archivo no existe, para no dejar la UI rota
             icono.setText("•")
-            icono.setStyleSheet("font-size: 14px; color: #115E67;")
+            icono.setStyleSheet(f"font-size: {escalar_fuente(14)}px; color: #115E67;")
             print(f"no existe el ícono: {ruta_icono}")
 
         contenedor = QFrame()
@@ -519,43 +519,43 @@ class VentanaPrincipal(QWidget):
             calendario.setNavigationBarVisible(True)
             calendario.setFirstDayOfWeek(Qt.Monday)
 
-            calendario.setStyleSheet("""
-                QCalendarWidget QWidget {
+            calendario.setStyleSheet(f"""
+                QCalendarWidget QWidget {{
                     alternate-background-color: #F5F8F8;
-                }
-                QCalendarWidget QToolButton {
+                }}
+                QCalendarWidget QToolButton {{
                     color: #115E67;
-                    font-size: 13px;
+                    font-size: {escalar_fuente(13)}px;
                     font-weight: 600;
                     background-color: transparent;
                     border-radius: 6px;
                     padding: 4px 8px;
-                }
-                QCalendarWidget QToolButton:hover {
+                }}
+                QCalendarWidget QToolButton:hover {{
                     background-color: #E4F1F2;
-                }
-                QCalendarWidget QMenu {
+                }}
+                QCalendarWidget QMenu {{
                     background-color: white;
-                }
-                QCalendarWidget QSpinBox {
+                }}
+                QCalendarWidget QSpinBox {{
                     color: #115E67;
                     background-color: white;
-                }
-                #qt_calendar_navigationbar {
+                }}
+                #qt_calendar_navigationbar {{
                     background-color: white;
                     border-top-left-radius: 10px;
                     border-top-right-radius: 10px;
-                }
-                QCalendarWidget QAbstractItemView:enabled {
+                }}
+                QCalendarWidget QAbstractItemView:enabled {{
                     background-color: white;
                     color: #333;
                     selection-background-color: #115E67;
                     selection-color: white;
                     outline: none;
-                }
-                QCalendarWidget QAbstractItemView:disabled {
+                }}
+                QCalendarWidget QAbstractItemView:disabled {{
                     color: #C7CFCF;
-                }
+                }}
             """)
 
             self._calendario = calendario
@@ -688,7 +688,7 @@ class VentanaPrincipal(QWidget):
             nombre = QLabel(etiqueta)
             nombre.setAlignment(Qt.AlignCenter)
             nombre.setStyleSheet(
-                f"color: {color}; font-size: 16px; font-weight: 700; "
+                f"color: {color}; font-size: {escalar_fuente(16)}px; font-weight: 700; "
                 "border: none;"
             )
             layout_tarjeta.addWidget(nombre)
@@ -707,7 +707,7 @@ class VentanaPrincipal(QWidget):
                 QPushButton {{
                     background-color: {color};
                     color: white;
-                    font-size: 13px;
+                    font-size: {escalar_fuente(13)}px;
                     font-weight: 600;
                     border: none;
                     border-bottom-left-radius: 14px;
