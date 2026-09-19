@@ -27,7 +27,7 @@ def _obtener_driver_disponible():
 
 def _crear_conexion(nombre_bd: str):
     driver = _obtener_driver_disponible()
-    return pyodbc.connect(
+    conexion  = pyodbc.connect(
         f"DRIVER={{{driver}}};"
         f"SERVER=tcp:{DB_SERVER};"
         f"DATABASE={nombre_bd};"
@@ -36,8 +36,14 @@ def _crear_conexion(nombre_bd: str):
         f"Encrypt=yes;"
         f"TrustServerCertificate=yes;",
         timeout=7,
+        autocommit=True,
     )
-
+    
+    cursor = conexion.cursor()
+    cursor.execute("SET LOCK_TIMEOUT 15000")  # 15 segundos máximo esperando un lock
+    cursor.close()
+    
+    return conexion
 
 def conectar_bd(database_key: str = "DB_DATABASE"):
     """
