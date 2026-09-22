@@ -9,7 +9,7 @@ from models.usuarios import Usuario
 from models.database import obtener_conexion
 from PySide6.QtGui import QIcon
 import ctypes
-
+from PySide6.QtCore import QTimer
 
 class ControladorApp:
 
@@ -34,6 +34,7 @@ class ControladorApp:
         self.ventana_fondo.close()
         self.ventana_app = VentanaApp(usuario, obtener_conexion)
         self.ventana_app.show()
+        QTimer.singleShot(0, self.ventana_app.showMaximized)
 
 
 def main():
