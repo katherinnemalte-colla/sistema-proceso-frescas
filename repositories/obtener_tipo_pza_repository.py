@@ -7,7 +7,7 @@ DB_PRODUCTOS = os.getenv("DB_DATABASE")
 DB_IMAGENES = os.getenv("DB_DATABASE_1")
 
 # Cantidad de productos por página dentro de una misma letra.
-TAMANO_PAGINA = 10
+TAMANO_PAGINA = 6
 
 
 @dataclass

@@ -3,7 +3,6 @@ from ui.ventana_principal import VentanaPrincipal
 from ui.seleccion_de_producto import SeleccionDeProducto
 from ui.ficha_tecnica import FichaTecnica
 
-
 class VentanaApp(QMainWindow):
     def __init__(self, usuario, obtener_conexion):
         super().__init__()
@@ -12,23 +11,19 @@ class VentanaApp(QMainWindow):
 
         self.stack_principal = QStackedWidget()
         self.setCentralWidget(self.stack_principal)
-
-        # no depende de datos externos
         self.pantalla_principal = VentanaPrincipal(self.usuario, self._obtener_conexion, self)
-        self.stack_principal.addWidget(self.pantalla_principal)  # índice 0
+        self.stack_principal.addWidget(self.pantalla_principal)
 
-        # Estas se crean bajo demanda, cuando haya datos para construirlas
         self.pantalla_seleccion = None
         self.pantalla_ficha = None
 
         self.stack_principal.setCurrentWidget(self.pantalla_principal)
-        #self.showFullScreen()
-        self.showMaximized()
+
 
     # --- navegación centralizada ---
     def mostrar_principal(self):
         self.stack_principal.setCurrentWidget(self.pantalla_principal)
-
+        self.stack_principal.showMaximized()
     def mostrar_seleccion(self, *, lotes, fecha_produccion, especie, numEspecie, tpo_pza=None, empresa):
         if self.pantalla_seleccion is not None:
             self.stack_principal.removeWidget(self.pantalla_seleccion)

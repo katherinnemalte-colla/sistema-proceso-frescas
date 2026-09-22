@@ -83,7 +83,6 @@ class FichaTecnica(QWidget):
         self._grupo_limpieza = None
 
         self.setWindowTitle(f"Ficha técnica - {producto.get('nombre', '')}")
-        aplicar_tamano(self, modo="completo", ancho_pct=0.7, alto_pct=0.85)
         self.setStyleSheet("QWidget { background-color: #F5F8F8; }")
         # --- NUEVO: fuerza el factor de escala según el alto real de este contenido ---
         ALTO_CONTENIDO_BASE_FICHA = 1100  # ajusta este valor midiendo tu contenido a factor 1
@@ -149,7 +148,7 @@ class FichaTecnica(QWidget):
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         
         layout_externo = QVBoxLayout(self)
-        layout_externo.setContentsMargins(0, 0, 0, 0)
+        layout_externo.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
         layout_externo.addWidget(scroll)
 
         # ----------------------------------------------------------
@@ -697,7 +696,6 @@ class FichaTecnica(QWidget):
 
         layout.addWidget(self.combo_impresora)
 
-        self.etiqueta_peso.setText("prueba123")
         layout.addStretch()
         return marco
 
