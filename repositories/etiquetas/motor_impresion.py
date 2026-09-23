@@ -47,7 +47,7 @@ def crear_impresora(
         QSizeF(ancho_mm, alto_mm),
         QPageSize.Unit.Millimeter,
         "EtiquetaPersonalizada",
-        QPageSize.SizeMatchPolicy.ExactMatch
+        QPageSize.SizeMatchPolicy.FuzzyMatch
     )
     
     diseno = QPageLayout()

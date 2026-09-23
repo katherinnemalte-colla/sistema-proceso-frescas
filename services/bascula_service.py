@@ -24,8 +24,21 @@ logger = logging.getLogger(__name__)
 # ======================================================================
 BAUDIOS = 9600
 
+# 9600,n,8,1            
+
+## declare @cterm as varchar(60)
+
+## set @cterm = 'DESARROLLO-P388'
+## SELECT valor1 FROM BASICAS WHERE codig_elem = @cterm AND nombr_grup = 'COMUNICACION_SETTING'
+## select valor1 from basicas where codig_elem = @cterm  AND nombr_grup = 'COMUNICACION' AND ELEME_GRUP = 'PUERTO_COM'
+                                                                                                                                                                                                                                    
+
+
 # Puerto fijo de producción. Confirma este valor en el Administrador de dispositivos.
-COM_BASCULA_FALLBACK = "COM5"
+COM_BASCULA_FALLBACK = "COM7"
+
+## nPort = str(valor1) 
+## COM_BASCULA_FALLBACK = "COM" + cPort
 
 # Consulta de configuración del puerto por equipo.
 CODIGO_PROCESO_DEFAULT = socket.gethostname()
@@ -86,118 +99,6 @@ def _extraer_peso(linea: str) -> Optional[float]:
 
     except (TypeError, ValueError):
         return None
-
-
-# ======================================================================
-# BÚSQUEDA AUTOMÁTICA DE LA BÁSCULA
-# ======================================================================
-
-def _buscar_puerto_bascula() -> Optional[str]:
-    """
-    Recorre TODOS los puertos serie disponibles en el sistema y prueba
-    cada uno, leyendo unas líneas para ver si responde con una trama de
-    peso reconocible (número + "kg"). Devuelve el primer puerto donde
-    se detecte una báscula, o None si no se encuentra ninguna.
-
-    Al no depender de un nombre de puerto fijo, esto sigue funcionando
-    aunque Windows le asigne un número de COM distinto (como pasó antes
-    de COM4 a COM6).
-    """
-
-    if serial is None or list_ports is None:
-        logger.error("PySerial no está instalado.")
-        return None
-
-    puertos_disponibles = list_ports.comports()
-
-    if not puertos_disponibles:
-        logger.warning("No se detectó ningún puerto serie disponible.")
-        return None
-
-    for info_puerto in puertos_disponibles:
-        nombre_puerto = info_puerto.device
-
-        logger.info(
-            "Probando báscula en %s (%s)...",
-            nombre_puerto,
-            info_puerto.description,
-        )
-
-        try:
-            with serial.Serial(
-                port=nombre_puerto,
-                baudrate=BAUDIOS,
-                bytesize=serial.EIGHTBITS,
-                parity=serial.PARITY_NONE,
-                stopbits=serial.STOPBITS_ONE,
-                timeout=TIMEOUT_BUSQUEDA_S,
-            ) as puerto:
-
-                logger.info(
-                    "Puerto %s abierto correctamente.",
-                    nombre_puerto,
-                )
-
-                for numero in range(INTENTOS_LECTURA_BUSQUEDA):
-
-                    try:
-                        puerto.reset_input_buffer()
-                        puerto.write(COMANDO_SOLICITUD_PESO)
-                        puerto.flush()
-                    except Exception as exc:
-                        logger.debug(
-                            "No se pudo enviar el comando a %s: %s",
-                            nombre_puerto,
-                            exc,
-                        )
-                        break
-
-                    bruto = puerto.readline()
-
-                    logger.debug(
-                        "Lectura #%d desde %s: %r",
-                        numero + 1,
-                        nombre_puerto,
-                        bruto,
-                    )
-
-                    if not bruto:
-                        continue
-
-                    linea = bruto.decode(
-                        "ascii",
-                        errors="ignore",
-                    ).strip()
-
-                    if not linea:
-                        continue
-
-                    peso = _extraer_peso(linea)
-
-                    if peso is not None:
-                        logger.info(
-                            "Báscula encontrada en %s: %.3f kg",
-                            nombre_puerto,
-                            peso,
-                        )
-                        return nombre_puerto
-
-        except Exception as exc:
-            # No es la báscula, o el puerto está ocupado por otra cosa
-            # (mouse serial, módem virtual, etc.) — seguimos probando
-            # con el siguiente puerto de la lista.
-            logger.debug(
-                "Descartado %s: %s",
-                nombre_puerto,
-                exc,
-            )
-            continue
-
-    logger.warning(
-        "No fue posible detectar la báscula en ningún puerto disponible."
-    )
-
-    return None
 
 
 # ======================================================================
