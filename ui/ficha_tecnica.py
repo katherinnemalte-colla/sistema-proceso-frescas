@@ -8,20 +8,22 @@ from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from types import SimpleNamespace
-from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido
+from utils.ventana_utils import escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository
 from repositories.obtener_tipo_limpieza_repository import ObtenerTipoLimpiezaRepository
 from utils import fechas
 from repositories.etiquetas.frescas_100x45 import (
     construir_datos_etiqueta, imprimir_etiqueta_frescas,
     generar_vista_previa_pixmap, DatosEtiquetaFrescas,
-    siguiente_consecutivo_etiqueta_canasta, CODIGO_PROCESO_DEFAULT
+    CODIGO_PROCESO_DEFAULT
 )
 from services.bascula_service import bascula_service
 import shiboken6
+from PySide6.QtWidgets import QCheckBox
 from PySide6.QtPrintSupport import QPrinterInfo
 from PySide6.QtWidgets import QComboBox, QLineEdit
-from services.hstrco_psje_service import registrar_historico_pesaje, guardar_historico_pesaje
+from services.hstrco_psje_service import registrar_historico_pesaje
+from repositories.hstrco_psje_repository import  guardar_historico_pesaje,obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, actualizar_historico_pesaje
 from PySide6.QtGui import QIntValidator
 
 ANCHO_CONTENIDO = 1150  # valor BASE, se escala con escalar() al usarlo
@@ -48,6 +50,7 @@ class FichaTecnica(QWidget):
         nom_impr_etiq=None,
         empresa,
         fecha_vencimiento_str,
+        nmro_psta,
     ):
         super().__init__()
         
@@ -68,7 +71,7 @@ class FichaTecnica(QWidget):
         self.nom_impr_etiq = nom_impr_etiq
         self.empresa = empresa
         self.fecha_vencimiento_str = fechas._asegurar_date(fecha_vencimiento_str)
-
+        self.nmro_psta = nmro_psta
         self.producto_completo = None
         if self.tpo_pza is not None:
             repositorio_imagenes = ObtenerTipoPzaRepository(self._obtener_conexion)
@@ -91,13 +94,13 @@ class FichaTecnica(QWidget):
 
         self._crear_interfaz()
         limpiar_factor_temporal()
-        self.numero_ticket = siguiente_consecutivo_etiqueta_canasta()
+        self.numero_ticket = self.nmro_psta  
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         self.actualizar_vista_previa(
             construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
         )
         bascula_service.peso_actualizado.connect(self._on_peso_actualizado)
-
+        self._cargar_historicos_pesaje()
     # ==============================================================
     # CONEXIÓN A BD
     # ==============================================================
@@ -138,7 +141,7 @@ class FichaTecnica(QWidget):
         layout.setSpacing(escalar(16))
 
         contenedor = QWidget()
-        #contenedor.setMaximumWidth(escalar(ANCHO_CONTENIDO))
+        
         contenedor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         contenedor.setLayout(layout)
 
@@ -205,8 +208,8 @@ class FichaTecnica(QWidget):
         fila_inferior = QHBoxLayout()
         fila_inferior.setSpacing(escalar(16))
 
-        fila_inferior.addWidget(self._crear_bascula())
-        fila_inferior.addWidget(self._crear_datos_adicionales())
+        fila_inferior.addWidget(self._crear_bascula(),1)
+        fila_inferior.addWidget(self._crear_datos_adicionales(),1)
 
         layout.addLayout(fila_inferior)
 
@@ -233,9 +236,9 @@ class FichaTecnica(QWidget):
         """)
         boton_inicio.clicked.connect(self._volver_a_inicio)
 
-        boton_guardar = QPushButton("Imprime")
-        boton_guardar.setFixedHeight(escalar(50))
-        boton_guardar.setStyleSheet(f"""
+        self.boton_guardar = QPushButton("Imprime")
+        self.boton_guardar.setFixedHeight(escalar(50))
+        self.boton_guardar.setStyleSheet(f"""
             QPushButton {{
                 background-color: #115E67;
                 color: white;
@@ -249,11 +252,12 @@ class FichaTecnica(QWidget):
             }}
         """)
 
-        boton_guardar.clicked.connect(self._guardar_peso)
+        self.boton_guardar.clicked.connect(self._accion_boton_principal)
 
         fila_botones.addWidget(boton_inicio)
-        fila_botones.addWidget(boton_guardar)
+        fila_botones.addWidget(self.boton_guardar)
         layout.addLayout(fila_botones)
+        #self._cargar_historicos_pesaje()
 
     # ==============================================================
     # IMAGEN PRINCIPAL
@@ -722,8 +726,53 @@ class FichaTecnica(QWidget):
         self.lbl_vista_previa_etiqueta = QLabel()
         self.lbl_vista_previa_etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_vista_previa_etiqueta.setMinimumHeight(escalar(150))
+        self.lbl_vista_previa_etiqueta.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         layout.addWidget(self.lbl_vista_previa_etiqueta)
 
+            # --- Consecutivo de pesaje + Inactivar ---
+        fila_historico = QHBoxLayout()
+        fila_historico.setSpacing(10)
+
+        etiqueta_historico = QLabel("Consecutivo:")
+        etiqueta_historico.setStyleSheet(
+            f"color: #666; font-size: {escalar_fuente(13)}px;"
+        )
+        etiqueta_historico.setSizePolicy(
+            QSizePolicy.Fixed,
+            QSizePolicy.Fixed
+        )
+
+        fila_historico.addWidget(etiqueta_historico)
+
+        self.combo_historico_pesaje = QComboBox()
+        self.combo_historico_pesaje.setFixedWidth(escalar(220))
+        self.combo_historico_pesaje.setEditable(True)
+        self.combo_historico_pesaje.setStyleSheet("""
+            QComboBox {
+                background-color: white;
+                border: 1px solid #D9E2E4;
+                border-radius: 6px;
+                padding: 4px;
+                font-size: 12px;
+            }
+        """)
+        self.combo_historico_pesaje.activated.connect(self._on_historico_combo_cambiado)
+        self.combo_historico_pesaje.editTextChanged.connect(self._on_historico_texto_editado)
+        self.combo_historico_pesaje.lineEdit().editingFinished.connect(self._on_historico_texto_confirmado)
+        fila_historico.addWidget(self.combo_historico_pesaje, stretch=1)
+
+        self.check_inactivar = QCheckBox("Inactivar")
+        self.check_inactivar.setStyleSheet(
+            f"color: #B00020; font-size: {escalar_fuente(13)}px;"
+        )
+        self.check_inactivar.setSizePolicy(
+            QSizePolicy.Fixed,
+            QSizePolicy.Fixed
+        )
+
+        fila_historico.addWidget(self.check_inactivar)
+        fila_historico.addStretch()
+        layout.addLayout(fila_historico)
         layout.addStretch()
         return marco
 
@@ -775,6 +824,114 @@ class FichaTecnica(QWidget):
             oprdor=self.usuario.nombre_usuario + "-" + CODIGO_PROCESO_DEFAULT,
             nmro_psta=self.numero_ticket,
         )
+        self._cargar_historicos_pesaje()  # nuevo: refresca para que el botón pase a "Reimprime"
+    def _cargar_historicos_pesaje(self):
+        try:
+            self._historicos_disponibles = obtener_ultimos_pesajes_recientes(limite=3)
+        except Exception as e:
+            print("No fue posible cargar históricos de pesaje:", e)
+            self._historicos_disponibles = []
+
+        self.combo_historico_pesaje.blockSignals(True)
+        self.combo_historico_pesaje.clear()
+        self.combo_historico_pesaje.addItem("", None)  # opción vacía = registro nuevo
+        for historico in self._historicos_disponibles:
+            texto = f"{historico['nmro_psta']} - {historico['nmbre_plu']} - {historico['pso_nto']} kg"
+            self.combo_historico_pesaje.addItem(texto, historico)
+        self.combo_historico_pesaje.setCurrentIndex(0)
+        self.combo_historico_pesaje.blockSignals(False)
+
+        self._historico_seleccionado = None
+        self._actualizar_texto_boton()
+    
+    def _on_historico_combo_cambiado(self, indice: int):
+        self._historico_seleccionado = self.combo_historico_pesaje.itemData(indice)
+        self._actualizar_texto_boton()
+        
+    def _on_historico_texto_editado(self, texto: str):
+        # Mientras escribe, se invalida la selección hasta que confirme.
+        if self.combo_historico_pesaje.findText(texto) == -1:
+            self._historico_seleccionado = None
+            self._actualizar_texto_boton()
+
+    def _on_historico_texto_confirmado(self):
+        texto = self.combo_historico_pesaje.currentText().strip()
+        if not texto:
+            self._historico_seleccionado = None
+            self._actualizar_texto_boton()
+            return
+
+        # ¿Coincide con uno de los 3 ya cargados?
+        indice = self.combo_historico_pesaje.findText(texto)
+        if indice != -1:
+            self._historico_seleccionado = self.combo_historico_pesaje.itemData(indice)
+            self._actualizar_texto_boton()
+            return
+
+        # Texto libre: se interpreta el primer token como nmro_psta y se valida en BD.
+        primer_token = texto.split(" - ")[0].strip()
+        try:
+            nmro_psta_tecleado = int(primer_token)
+        except ValueError:
+            self._historico_seleccionado = None
+            self._actualizar_texto_boton()
+            return
+
+        try:
+            resultados = obtener_ultimos_historicos_pesaje(nmro_psta_tecleado)
+        except Exception as e:
+            print("No fue posible verificar la posta digitada:", e)
+            resultados = []
+
+        self._historico_seleccionado = resultados[0] if resultados else None
+        self._actualizar_texto_boton()
+        
+
+    def _actualizar_texto_boton(self):
+        self.boton_guardar.setText(
+            "Reimprime" if self._historico_seleccionado is not None else "Imprime"
+        )
+    def _accion_boton_principal(self):
+        if self._historico_seleccionado is not None:
+            self._reimprimir_historico()
+        else:
+            self._guardar_peso()
+    def _construir_datos_historico_actualizado(self) -> dict:
+        # Como los campos de _crear_info_producto no son editables,
+        # se reutilizan los valores ya cargados en la sesión actual.
+        # pso_tra, pso_brto, pddo y prcndor no se capturan hoy en la interfaz;
+        # quedan en 0 hasta que definas de dónde deben salir.
+        return {
+            "cdgo_plu": self.producto.get("cdgo_plu", 0),
+            "nmbre_plu": self.producto.get("nombre", ""),
+            "tpo_lmpza": self.tipo_limpieza_seleccionado or 0,
+            "nmro_lte": self.lote,
+            "fcha_prdccion": self.fecha_produccion,
+            "fcha_vnce_ref": self.fecha_vencimiento_str,
+            "fcha_vnce_cong": self.fecha_vencimiento_str,
+            "fcha_scrfcio": self.fecha_sacrificio,
+            "pso_nto": self.peso_neto_kg,
+            "pso_tra": 0,
+            "pso_brto": 0,
+            "cdgo_emprsa": self.empresa,
+            "pddo": 0,
+            "prcndor": 0,
+        }
+
+    def _reimprimir_historico(self):
+        cnsctvo = self._historico_seleccionado["cnsctvo"]
+        estado_a_enviar = 9 if self.check_inactivar.isChecked() else None
+
+        actualizar_historico_pesaje(
+            cnsctvo,
+            self._construir_datos_historico_actualizado(),
+            oprdor=self.usuario.nombre_usuario + "-" + CODIGO_PROCESO_DEFAULT,
+            estado=estado_a_enviar,
+        )
+
+        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
+        datos_etiqueta = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+        imprimir_etiqueta_frescas(datos_etiqueta, self.impresora_seleccionada)
 
     def _limpiar_y_volver(self):
         bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)

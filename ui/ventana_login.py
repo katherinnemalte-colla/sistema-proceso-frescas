@@ -241,7 +241,8 @@ class VentanaLogin(QDialog):
 
         formulario = QVBoxLayout()
 
-        formulario.setSpacing(12)
+        formulario.setSpacing(escalar(12))
+
 
         formulario.addWidget(
             titulo_bienvenida
@@ -288,7 +289,7 @@ class VentanaLogin(QDialog):
         columna_login = QVBoxLayout()
 
         columna_login.setContentsMargins(
-            0, 0, 0, 0
+            escalar(0), escalar(0), escalar(0), escalar(0)
         )
 
         columna_login.addLayout(

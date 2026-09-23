@@ -20,8 +20,6 @@ from PySide6.QtCore import (
 from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido
 from PySide6.QtGui import QPixmap
 from utils.rutas import ruta_recurso
-from utils.ventana_utils import aplicar_tamano
-
 
 VERSION_APP = "v1.0.0"
 
@@ -118,10 +116,10 @@ class VentanaFondo(QWidget):
         pie = QHBoxLayout()
 
         pie.setContentsMargins(
-            25,
-            12,
-            25,
-            12
+            escalar(25),
+            escalar(12),
+            escalar(25),
+            escalar(12)
         )
 
         pie.addWidget(
@@ -141,10 +139,10 @@ class VentanaFondo(QWidget):
         layout = QVBoxLayout()
 
         layout.setContentsMargins(
-            0,
-            0,
-            0,
-            0
+            escalar(0),
+            escalar(0),
+            escalar(0),
+            escalar(0)
         )
 
         layout.addStretch()

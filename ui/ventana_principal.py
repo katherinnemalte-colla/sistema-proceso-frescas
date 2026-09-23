@@ -91,11 +91,6 @@ class VentanaPrincipal(QWidget):
 
         self.setWindowTitle("Etiquetas para Piezas + Canastillas- 2 en 1")
 
-        aplicar_tamano(
-            self,
-            modo="completo", ancho_pct=0.7, alto_pct=0.85
-        )
-
         self.setStyleSheet("""
             QWidget {
                 background-color: #F5F8F8;
@@ -108,35 +103,30 @@ class VentanaPrincipal(QWidget):
         # ==========================================================
 
         layout_externo = QVBoxLayout()
-        layout_externo.setContentsMargins(0, 0, 0, 0)
+        layout_externo.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
 
-        layout_externo.addStretch()
+    
 
         fila_central = QHBoxLayout()
-        fila_central.addStretch()
 
         # ----------------------------------------------------------
         # LAYOUT PRINCIPAL (el bloque de contenido en sí)
         # ----------------------------------------------------------
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(16)
+        layout.setContentsMargins(escalar(30), escalar(30), escalar(30), escalar(30))
+        layout.setSpacing(escalar(16))
+
 
         contenedor = QWidget()
-        #contenedor.setMinimumWidth(ANCHO_CONTENIDO_MIN)
-        #contenedor.setMaximumWidth(ANCHO_CONTENIDO_MAX)
         contenedor.setSizePolicy(
             QSizePolicy.Expanding,
             QSizePolicy.Preferred
         )
         contenedor.setLayout(layout)
 
-        fila_central.addWidget(contenedor)
-        fila_central.addStretch()
-
+        fila_central.addWidget(contenedor,1)
         layout_externo.addLayout(fila_central)
-        layout_externo.addStretch()
 
         # ==========================================================
         # TÍTULO + SUBTÍTULO (centrados)
@@ -181,11 +171,13 @@ class VentanaPrincipal(QWidget):
         # ==========================================================
 
         fila_campos = QHBoxLayout()
-        fila_campos.setSpacing(24)
+        fila_campos.setSpacing(escalar(24))
+
 
         # --- Columna: fecha ---
         columna_fecha = QVBoxLayout()
-        columna_fecha.setSpacing(6)
+        columna_fecha.setSpacing(escalar(6))
+
 
         etiqueta_fecha = QLabel("Fecha de produccion")
         etiqueta_fecha.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
@@ -215,7 +207,8 @@ class VentanaPrincipal(QWidget):
 
         # --- Columna: lote ---
         columna_lote = QVBoxLayout()
-        columna_lote.setSpacing(6)
+        columna_lote.setSpacing(escalar(6))
+
 
         etiqueta_lote = QLabel("Lote a trabajar")
         etiqueta_lote.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
@@ -236,7 +229,8 @@ class VentanaPrincipal(QWidget):
         
                 # --- Columna: empresa ---
         columna_empresa = QVBoxLayout()
-        columna_empresa.setSpacing(6)
+        columna_empresa.setSpacing(escalar(6))
+
 
         etiqueta_empresa = QLabel("Empresa")
         etiqueta_empresa.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
@@ -296,7 +290,10 @@ class VentanaPrincipal(QWidget):
         self.stack_pie.addWidget(self.pagina_tipo_pieza)  # índice 1
 
         layout.addWidget(self.stack_pie)
-
+        self.stack_pie.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding
+        )
         self.setLayout(
             layout_externo
         )
@@ -328,7 +325,7 @@ class VentanaPrincipal(QWidget):
         pagina = QWidget()
 
         pie = QHBoxLayout(pagina)
-        pie.setContentsMargins(0, 0, 0, 0)
+        pie.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
         pie.addStretch()
         pie.addWidget(self._crear_boton_reiniciar())
         pie.addStretch()
@@ -365,8 +362,9 @@ class VentanaPrincipal(QWidget):
     def _crear_pagina_tipo_pieza(self) -> QWidget:
         pagina = QWidget()
         layout_panel = QVBoxLayout(pagina)
-        layout_panel.setContentsMargins(0, 0, 0, 0)
-        layout_panel.setSpacing(8)
+        layout_panel.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
+        layout_panel.setSpacing(escalar(8))
+
 
         self._etiqueta_tipo_pieza = QLabel("Seleccione la parte del animal")
         self._etiqueta_tipo_pieza.setAlignment(Qt.AlignCenter)
@@ -376,7 +374,8 @@ class VentanaPrincipal(QWidget):
         layout_panel.addWidget(self._etiqueta_tipo_pieza)
 
         self._fila_botones_tipo_pieza = QHBoxLayout()
-        self._fila_botones_tipo_pieza.setSpacing(16)
+        self._fila_botones_tipo_pieza.setSpacing(escalar(16))
+
         layout_panel.addLayout(self._fila_botones_tipo_pieza)
 
         return pagina
@@ -441,7 +440,7 @@ class VentanaPrincipal(QWidget):
         en el código.
         """
 
-        campo.setFixedHeight(38)
+        campo.setFixedHeight(escalar(38))
         campo.setFrame(False)
         campo.setStyleSheet("""
             QDateEdit, QComboBox {
@@ -456,7 +455,7 @@ class VentanaPrincipal(QWidget):
         """)
 
         icono = QLabel()
-        icono.setFixedSize(20, 20)
+        icono.setFixedSize(escalar(20), escalar(20))
         icono.setAlignment(Qt.AlignCenter)
 
         ruta_icono = os.path.join(RUTA_ICONOS, nombre_archivo_icono)
@@ -471,7 +470,7 @@ class VentanaPrincipal(QWidget):
             print(f"no existe el ícono: {ruta_icono}")
 
         contenedor = QFrame()
-        contenedor.setFixedHeight(38)
+        contenedor.setFixedHeight(escalar(38))
         contenedor.setStyleSheet("""
             QFrame {
                 border: 1px solid #D9E2E4;
@@ -481,8 +480,9 @@ class VentanaPrincipal(QWidget):
         """)
 
         fila = QHBoxLayout(contenedor)
-        fila.setContentsMargins(10, 0, 10, 0)
-        fila.setSpacing(6)
+        fila.setContentsMargins(escalar(10), escalar(0), escalar(10), escalar(0))
+        fila.setSpacing(escalar(6))
+
         fila.addWidget(icono)
         fila.addWidget(campo)
 
@@ -616,8 +616,9 @@ class VentanaPrincipal(QWidget):
 
         fila = QHBoxLayout()
 
-        fila.setSpacing(20)
-        fila.setContentsMargins(20, 15, 20, 15)
+        fila.setSpacing(escalar(20))
+
+        fila.setContentsMargins(escalar(20), escalar(15), escalar(20), escalar(15))
 
         self.grupo_especies = QButtonGroup(
             self
@@ -650,8 +651,9 @@ class VentanaPrincipal(QWidget):
             tarjeta.setObjectName("tarjeta")
 
             layout_tarjeta = QVBoxLayout(tarjeta)
-            layout_tarjeta.setContentsMargins(14, 18, 14, 0)
-            layout_tarjeta.setSpacing(8)
+            layout_tarjeta.setContentsMargins(escalar(14), escalar(18), escalar(14), escalar(0))
+            layout_tarjeta.setSpacing(escalar(8))
+
 
             # ------------------------------------------------------
             # IMAGEN

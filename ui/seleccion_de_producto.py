@@ -15,13 +15,14 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QGraphicsDropShadowEffect,
 )
-from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido,_icono_pixmap
+from utils.ventana_utils import escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido,_icono_pixmap
 from repositories.obtener_tipo_pza_repository import ObtenerTipoPzaRepository, TAMANO_PAGINA
 from utils import fechas
 from utils.colores import Colores
 from collections import namedtuple
 from utils import mensajes
 from utils.rutas import ruta_recurso
+from repositories.etiquetas.frescas_100x45 import (siguiente_consecutivo_etiqueta_canasta)
 
 CriterioFiltroRes = namedtuple(
     "CriterioFiltroRes",
@@ -101,6 +102,7 @@ class ProductoWidget(QFrame):
         self.producto = producto
         self.setCursor(Qt.PointingHandCursor)
         self.setObjectName("tarjetaProducto")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet(
             f"""
             #tarjetaProducto {{
@@ -116,8 +118,9 @@ class ProductoWidget(QFrame):
         _aplicar_sombra(self, blur=16, dy=3, alfa=30)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
+        layout.setSpacing(escalar(0))
+
 
         # --- Imagen, con aire alrededor y esquinas redondeadas propias ---
         contenedor_imagen = QFrame()
@@ -127,11 +130,11 @@ class ProductoWidget(QFrame):
             "border-top-right-radius: 14px; }"
         )
         layout_imagen = QVBoxLayout(contenedor_imagen)
-        layout_imagen.setContentsMargins(10, 10, 10, 10)
+        layout_imagen.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
 
         etiqueta_imagen = ImagenEscalable()
         etiqueta_imagen.setMinimumHeight(120)
-        etiqueta_imagen.setMaximumHeight(220)
+        #etiqueta_imagen.setMaximumHeight(220)
         etiqueta_imagen.setStyleSheet("background: transparent; border-radius: 8px;")
 
         pixmap = self._cargar_pixmap(producto.imagen_principal)
@@ -147,8 +150,9 @@ class ProductoWidget(QFrame):
 
         # --- PLU + nombre, juntos, con una franja inferior de color ---
         bloque_texto = QVBoxLayout()
-        bloque_texto.setContentsMargins(12, 10, 12, 12)
-        bloque_texto.setSpacing(2)
+        bloque_texto.setContentsMargins(escalar(12), escalar(10), escalar(12), escalar(12))
+        bloque_texto.setSpacing(escalar(2))
+
 
         etiqueta_plu = QLabel(f"PLU {producto.cdgo_plu}")
         etiqueta_plu.setAlignment(Qt.AlignCenter)
@@ -168,13 +172,13 @@ class ProductoWidget(QFrame):
 
         # Franja delgada de acento, pegada abajo de la tarjeta.
         franja_acento = QFrame()
-        franja_acento.setFixedHeight(4)
+        franja_acento.setFixedHeight(escalar(4))
         franja_acento.setStyleSheet(
             f"background: {COLOR_PRIMARIO}; border-bottom-left-radius: 14px; "
             "border-bottom-right-radius: 14px;"
         )
 
-        layout.addWidget(contenedor_imagen)
+        layout.addWidget(contenedor_imagen, stretch=1)
         layout.addLayout(bloque_texto)
         layout.addWidget(franja_acento)
 
@@ -253,11 +257,13 @@ class SeleccionDeProducto(QWidget):
         self._indice_ventana = 0
         self.lotes = lotes
         self._ventana_ficha_tecnica = None
+        ALTO_CONTENIDO_BASE = 780  # suma estimada de todas las secciones a factor 1x
+        establecer_factor_temporal(factor_para_contenido(ALTO_CONTENIDO_BASE))
 
         self._construir_ui()
         self._cargar_paginador_alfabetico()
-        aplicar_tamano(self, modo="completo", ancho_pct=0.7, alto_pct=0.85)
-
+        #aplicar_tamano(self, modo="completo", ancho_pct=0.7, alto_pct=0.85)
+        limpiar_factor_temporal()  # a partir de aquí, otras ventanas usan el factor normal
     # ------------------------------------------------------------------
     # Conexión a BD — ajustar según el módulo real del proyecto
     # ------------------------------------------------------------------
@@ -267,8 +273,9 @@ class SeleccionDeProducto(QWidget):
     def _construir_ui(self):
         self.setStyleSheet(f"background: {COLOR_FONDO};")
         layout_principal = QVBoxLayout(self)
-        layout_principal.setContentsMargins(0, 0, 0, 0)
-        layout_principal.setSpacing(0)
+        layout_principal.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
+        layout_principal.setSpacing(escalar(0))
+
 
         #layout_principal.addWidget(self._crear_cabecera())
         layout_principal.addWidget(self._crear_boton_atras())
@@ -284,25 +291,25 @@ class SeleccionDeProducto(QWidget):
         self._contenedor_grilla = QWidget()
         self._contenedor_grilla.setStyleSheet("background: transparent;")
         self._layout_grilla = QGridLayout(self._contenedor_grilla)
-        self._layout_grilla.setContentsMargins(28, 16, 28, 16)
-        self._layout_grilla.setSpacing(20)
+        self._layout_grilla.setContentsMargins(escalar(28), escalar(16), escalar(28), escalar(16))
+        self._layout_grilla.setSpacing(escalar(20))
+
         self._area_scroll.setWidget(self._contenedor_grilla)
 
         layout_principal.addWidget(self._area_scroll, stretch=1)
 
         layout_principal.addWidget(self._crear_paginador_alfabetico())
-        layout_principal.addWidget(self._crear_boton_atras())
 
 
     def _crear_boton_atras(self):
         contenedor = QFrame()
-        contenedor.setFixedHeight(64)   # misma altura que tenía la cabecera, para no mover el resto del layout
+        contenedor.setFixedHeight(escalar(64))   # misma altura que tenía la cabecera, para no mover el resto del layout
 
         layout = QHBoxLayout(contenedor)
-        layout.setContentsMargins(24, 12, 24, 12)
+        layout.setContentsMargins(escalar(24), escalar(12), escalar(24), escalar(12))
 
         boton_atras = QPushButton("←  Atrás")
-        boton_atras.setMinimumHeight(40)
+        boton_atras.setMinimumHeight(escalar(40))
         boton_atras.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         boton_atras.setStyleSheet(f"""
             QPushButton {{
@@ -330,8 +337,9 @@ class SeleccionDeProducto(QWidget):
         contenedor = QWidget()
         contenedor.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(contenedor)
-        layout.setContentsMargins(24, 16, 24, 8)
-        layout.setSpacing(16)
+        layout.setContentsMargins(escalar(24), escalar(16),escalar(24), escalar(8))
+        layout.setSpacing(escalar(16))
+
 
         layout.addWidget(
             self._crear_tarjeta("LOTE", self._obtener_valor_lote(), "box.png")
@@ -380,11 +388,12 @@ class SeleccionDeProducto(QWidget):
         _aplicar_sombra(tarjeta, blur=14, dy=2, alfa=18)
 
         layout = QHBoxLayout(tarjeta)
-        layout.setContentsMargins(14, 10, 18, 10)
-        layout.setSpacing(12)
+        layout.setContentsMargins(escalar(14), escalar(10), escalar(18), escalar(10))
+        layout.setSpacing(escalar(12))
+
 
         circulo_icono = QLabel()
-        circulo_icono.setFixedSize(48, 48)
+        circulo_icono.setFixedSize(escalar(48), escalar(48))
         circulo_icono.setAlignment(Qt.AlignCenter)
         circulo_icono.setStyleSheet(
             f"background: {COLOR_PRIMARIO_CLARO}; border-radius: 24px;"
@@ -398,7 +407,8 @@ class SeleccionDeProducto(QWidget):
             )
 
         bloque_texto = QVBoxLayout()
-        bloque_texto.setSpacing(2)
+        bloque_texto.setSpacing(escalar(2))
+
 
         etq_titulo = QLabel(etiqueta)
         etq_titulo.setStyleSheet(
@@ -425,8 +435,9 @@ class SeleccionDeProducto(QWidget):
     def _crear_fila_filtros(self):
         contenedor = QWidget()
         layout = QHBoxLayout(contenedor)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
+        layout.setSpacing(escalar(12))
+
 
         layout.addWidget(self._crear_filtro())
 
@@ -440,11 +451,12 @@ class SeleccionDeProducto(QWidget):
         _aplicar_sombra(contenedor, blur=14, dy=2, alfa=18)
 
         layout = QHBoxLayout(contenedor)
-        layout.setContentsMargins(10, 8, 16, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(escalar(10), escalar(8), escalar(16), escalar(8))
+        layout.setSpacing(escalar(12))
+
 
         circulo_buscar = QLabel()
-        circulo_buscar.setFixedSize(36, 36)
+        circulo_buscar.setFixedSize(escalar(36), escalar(36))
         circulo_buscar.setAlignment(Qt.AlignCenter)
         circulo_buscar.setStyleSheet(
             f"background: {COLOR_PRIMARIO}; border-radius: 18px;"
@@ -481,7 +493,7 @@ class SeleccionDeProducto(QWidget):
         envoltorio = QWidget()
         envoltorio.setStyleSheet("background: transparent;")
         layout_envoltorio = QVBoxLayout(envoltorio)
-        layout_envoltorio.setContentsMargins(24, 8, 24, 8)
+        layout_envoltorio.setContentsMargins(escalar(24),escalar(8), escalar(24), escalar(8))
         layout_envoltorio.addWidget(contenedor)
         return envoltorio
 
@@ -492,17 +504,15 @@ class SeleccionDeProducto(QWidget):
         contenedor = QWidget()
         contenedor.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(contenedor)
-        layout.setContentsMargins(24, 16, 24, 8)
-        layout.setSpacing(10)
+        layout.setContentsMargins(escalar(24), escalar(16), escalar(24), escalar(8))
+        layout.setSpacing(escalar(10))
+
 
         titulo = QLabel("SELECCIONE UN PRODUCTO")
         titulo.setStyleSheet(
             f"color: {COLOR_PRIMARIO}; font-size: {escalar_fuente(16)}px; font-weight: 700; letter-spacing: 1px;"
         )
 
-        layout.addStretch(1)
-        layout.addWidget(titulo)
-        layout.addStretch(1)
 
         return contenedor
 
@@ -513,8 +523,9 @@ class SeleccionDeProducto(QWidget):
         contenedor = QWidget()
         contenedor.setStyleSheet("background: transparent;")
         self._layout_paginador = QHBoxLayout(contenedor)
-        self._layout_paginador.setContentsMargins(24, 8, 24, 16)
-        self._layout_paginador.setSpacing(6)
+        self._layout_paginador.setContentsMargins(escalar(24),escalar(8), escalar(24), escalar(16))
+        self._layout_paginador.setSpacing(escalar(6))
+
 
         self.boton_primero = QPushButton("«")
         self.boton_anterior = QPushButton("‹")
@@ -522,7 +533,7 @@ class SeleccionDeProducto(QWidget):
         self.boton_ultimo = QPushButton("»")
 
         for boton in (self.boton_primero, self.boton_anterior, self.boton_siguiente, self.boton_ultimo):
-            boton.setFixedSize(34, 34)
+            boton.setFixedSize(escalar(34), escalar(34))
             boton.setStyleSheet(self._estilo_boton_navegacion())
 
         self.boton_primero.clicked.connect(self._ir_al_inicio)
@@ -534,7 +545,8 @@ class SeleccionDeProducto(QWidget):
         self._layout_paginador.addWidget(self.boton_anterior)
 
         self._layout_letras = QHBoxLayout()
-        self._layout_letras.setSpacing(6)
+        self._layout_letras.setSpacing(escalar(6))
+
         self._layout_paginador.addLayout(self._layout_letras)
         self._layout_paginador.addStretch(1)
 
@@ -603,7 +615,7 @@ class SeleccionDeProducto(QWidget):
                 texto_boton = f"{pagina_grupo.letras[0]}-{pagina_grupo.letras[-1]}"
 
             boton = QPushButton(texto_boton)
-            boton.setFixedSize(34, 34)
+            boton.setFixedSize(escalar(34), escalar(34))
             es_seleccionado = indice == self._indice_pagina_actual
             boton.setStyleSheet(self._estilo_boton_letra(es_seleccionado))
             boton.clicked.connect(lambda _=False, i=indice: self._ir_a_pagina(i))
@@ -751,6 +763,7 @@ class SeleccionDeProducto(QWidget):
             fecha_sacrificio = None,
             empresa=self.empresa,
             fecha_vencimiento_str = None,
+            nmro_psta=siguiente_consecutivo_etiqueta_canasta(),
             
         )
         

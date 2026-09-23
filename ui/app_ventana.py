@@ -61,6 +61,7 @@ class VentanaApp(QMainWindow):
         nom_impr_etiq=None,
         empresa = 0,
         fecha_vencimiento_str,
+        nmro_psta=0,
     ):
         if self.pantalla_ficha is not None:
             self.stack_principal.removeWidget(self.pantalla_ficha)
@@ -81,7 +82,8 @@ class VentanaApp(QMainWindow):
             fecha_sacrificio=fecha_sacrificio,
             nom_impr_etiq=nom_impr_etiq,
             empresa=empresa,
-            fecha_vencimiento_str=fecha_vencimiento_str
+            fecha_vencimiento_str=fecha_vencimiento_str,
+            nmro_psta=nmro_psta
         )
         self.stack_principal.addWidget(self.pantalla_ficha)
         self.stack_principal.setCurrentWidget(self.pantalla_ficha)

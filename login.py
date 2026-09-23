@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 import pyodbc  # para capturar sus excepciones específicas también
 import traceback
 from services.auth_service import authService
+from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido,_icono_pixmap
 
 
 class LoginWorker(QThread):
@@ -56,7 +57,7 @@ class LoginWindow(QWidget):
             "MÓDULO DE PESAJE PRODUCTOS EN POSTAS Y A GRANEL DEL "
             "CENTRO DE PROCESO CARNES FRESCAS - Login"
         )
-        self.setFixedSize(300, 200)
+        self.setFixedSize(escalar(300), escalar(200))
 
         self.login_worker = None
         self.dialogo_espera = None
