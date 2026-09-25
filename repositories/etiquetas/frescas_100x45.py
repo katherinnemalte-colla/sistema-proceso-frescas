@@ -877,25 +877,15 @@ def imprimir_etiqueta_frescas(
         impresora
     )
 
-    # Mantiene la orientación utilizada por la impresora actual.
-    # Antes se usaban los números fijos 450 y 1000, que coincidían
-    # "por casualidad" con ALTO y ANCHO. Ahora se usan las constantes
-    # directamente: el contenido siempre queda definido por las
-    # variables (ANCHO/ALTO) y, si el tamaño lógico de la etiqueta
-    # cambia, la impresión respeta ese mismo tamaño automáticamente.
+    # Ya no hace falta rotar: ANCHO/ALTO (lienzo) y
+    # ANCHO_MM/ALTO_MM (papel físico) están en la misma
+    # orientación (horizontal), así que se dibuja directo.
     painter.setWindow(
         0,
         0,
-        ALTO,
         ANCHO,
-    )
-
-    painter.translate(
         ALTO,
-        0,
     )
-
-    painter.rotate(90)
 
     _dibujar_contenido_etiqueta(
         painter,

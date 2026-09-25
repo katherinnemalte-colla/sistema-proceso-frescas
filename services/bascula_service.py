@@ -52,6 +52,11 @@ INTERVALO_MODO_PRUEBA_MS = 2000
 # comando (confirmado con HyperTerminal: se escribe "P" + Enter y ella
 # responde con la línea del peso). Si en algún momento deja de
 # responder, probar con b"P\r" o b"P\n" en vez de b"P\r\n".
+
+_PATRON_PESO = re.compile(
+    r"([-+])?\s*(\d+(?:\.\d+)?)\s*(?:kg)?",
+    re.IGNORECASE,
+)
 COMANDO_SOLICITUD_PESO = b"P\r\n"
 
 # Pausa entre cada solicitud de peso durante la lectura continua.
@@ -70,11 +75,6 @@ INTERVALO_RECONEXION_MS = 5000
 # ======================================================================
 # PARSEO DE LA TRAMA
 # ======================================================================
-
-_PATRON_PESO = re.compile(
-    r"([-+]?\d+(?:\.\d+)?)\s*kg",
-    re.IGNORECASE,
-)
 
 
 def _extraer_peso(linea: str) -> Optional[float]:
@@ -95,7 +95,9 @@ def _extraer_peso(linea: str) -> Optional[float]:
         return None
 
     try:
-        return float(coincidencia.group(1))
+        signo, numero = coincidencia.groups()
+        valor = float(numero)
+        return -valor if signo == "-" else valor
 
     except (TypeError, ValueError):
         return None

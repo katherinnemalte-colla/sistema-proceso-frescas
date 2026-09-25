@@ -1,20 +1,4 @@
-"""
-motor_impresion.py
-
-Piezas GENÉRICAS de impresión de etiquetas, reutilizables sin importar
-el diseño/tamaño específico: configuración de QPrinter, generación de
-códigos QR, y helpers de texto (equivalentes a alltrim/isblank del
-reporte FoxPro original).
-
-Cada plantilla de etiqueta concreta (frescas_100x45.py, y las que
-vengan después) importa de acá en vez de reimplementar esto.
-
-Requiere: pip install qrcode --break-system-packages
-"""
-
 import io
-from typing import Optional
-
 import qrcode
 from PySide6.QtCore import QMarginsF, QRectF, QSizeF
 from PySide6.QtGui import QImage, QPainter,QPageLayout, QPageSize
@@ -47,17 +31,14 @@ def crear_impresora(
         QSizeF(ancho_mm, alto_mm),
         QPageSize.Unit.Millimeter,
         "EtiquetaPersonalizada",
-        QPageSize.SizeMatchPolicy.FuzzyMatch
+        QPageSize.SizeMatchPolicy.FuzzyMatch   # antes ExactMatch — evita el fallback silencioso
     )
     
     diseno = QPageLayout()
     diseno.setPageSize(tamano_pagina)
-    diseno.setOrientation(QPageLayout.Orientation.Portrait)
-    
-    margenes = QMarginsF(margen_mm, margen_mm, margen_mm, margen_mm)
-    diseno.setMargins(margenes)
+    diseno.setOrientation(QPageLayout.Orientation.Portrait)  # esto SIEMPRE se fuerza, no depende de lo que el usuario configuró en Windows
     diseno.setUnits(QPageLayout.Unit.Millimeter)
-    
+    diseno.setMargins(QMarginsF(margen_mm, margen_mm, margen_mm, margen_mm))
     impresora.setPageLayout(diseno)
     impresora.setFullPage(True)
     

@@ -169,7 +169,7 @@ def obtener_ultimos_pesajes_recientes(limite: int = 3) -> list[dict]:
         SELECT TOP (?)
             nmro_psta, cnsctvo, cdgo_plu, nmbre_plu,
             nmro_lte, pso_nto, actlzcion, estdo
-        FROM [{DB_PRODUCTOS}].dbo.hstrco_psje
+        FROM [{DB_PRODUCTOS}].dbo.hstrco_psje where estdo <> 9
         ORDER BY actlzcion DESC
     """
     with obtener_conexion() as conexion:

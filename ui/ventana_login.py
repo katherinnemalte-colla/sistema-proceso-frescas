@@ -56,91 +56,88 @@ class VentanaLogin(QDialog):
         panel.setGeometry(self.rect())
 
         panel.setStyleSheet(f"""
-            #panel {{ background-color: #082F35; }}
-            QLabel {{ color: white; }}
-            #logo {{ background: transparent; }}
-            #titulo_bienvenida {{
-                color: white;
-                font-size: {escalar_fuente(24)}px;
-                font-weight: bold;
-            }}
-            #subtitulo {{
-                color: #B8C9CB;
-                font-size: {escalar_fuente(13)}px;
-            }}
-            #linea {{ background-color: #2C8992; }}
-            QLineEdit {{
-                padding: {escalar(12)}px;
-                border-radius: {escalar(7)}px;
-                border: 1px solid #47777D;
-                background-color: rgba(255, 255, 255, 0.08);
-                color: white;
-                font-size: {escalar_fuente(14)}px;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid #94B7BB;
-                background-color: rgba(255, 255, 255, 0.12);
-            }}
-            QLineEdit::placeholder {{ color: #A8BCBF; }}
-            QPushButton {{
-                padding: {escalar(11)}px;
-                border-radius: {escalar(7)}px;
-                background-color: #0F7C87;
-                color: white;
-                font-size: {escalar_fuente(14)}px;
-                font-weight: bold;
-                border: none;
-            }}
-            QPushButton:hover {{ background-color: #1595A1; }}
-            #boton_cancelar {{
-                background-color: transparent;
-                border: 1px solid #47777D;
-                color: #B8C9CB;
-            }}
-            #boton_cancelar:hover {{ background-color: rgba(255, 255, 255, 0.08); }}
-            #enlace_contrasena {{
-                color: #94B7BB;
-                font-size: {escalar_fuente(12)}px;
-                background: transparent;
-            }}
-            #version {{
-                color: #78969A;
-                font-size: {escalar_fuente(10)}px;
-            }}
-        """)
+    #panel {{
+        background-color: rgba(8, 47, 53, 0.85);
+        border-radius: {escalar(1)}px;
+    }}
 
-        # ==========================================================
-        # FONDO
-        # ==========================================================
+    QLabel {{ 
+        color: white; 
+    }}
 
-        fondo = QLabel(panel)
-        fondo.setObjectName("fondo")
-        
-        pixmap_fondo = QPixmap(str(ruta_recurso("assets/icons/login/fondo_login.png")))
+    #logo {{ 
+        background: transparent; 
+    }}
 
-        fondo.setPixmap(
-        pixmap_fondo.scaled(
-        panel.size(),
-        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-        Qt.TransformationMode.SmoothTransformation
-            )
-        )
+    #titulo_bienvenida {{
+        color: white;
+        font-size: {escalar_fuente(24)}px;
+        font-weight: bold;
+    }}
 
-        fondo.setGeometry(panel.rect())
-        fondo.lower()
+    #subtitulo {{
+        color: #B8C9CB;
+        font-size: {escalar_fuente(13)}px;
+    }}
 
-        # Oscurecer el fondo
-        capa = QWidget(panel)
-        capa.setObjectName("capa")
+    #linea {{ 
+        background-color: #2C8992; 
+    }}
 
-        capa.setGeometry(panel.rect())
+    QLineEdit {{
+        padding: {escalar(12)}px;
+        border-radius: {escalar(7)}px;
+        border: 1px solid white;
+        background-color: rgba(255, 255, 255, 0.18);
+        color: white;
+        font-size: {escalar_fuente(14)}px;
+    }}
 
-        capa.setStyleSheet("""
-            #capa {
-                background-color: rgba(3, 30, 34, 190);
-                border-radius: 0px;
-            }
-        """)
+    QLineEdit:focus {{
+        border: 1px solid white;
+        background-color: rgba(255, 255, 255, 0.25);
+    }}
+
+    QLineEdit::placeholder {{ 
+        color: #A8BCBF; 
+    }}
+
+    QPushButton {{
+        padding: {escalar(11)}px;
+        border-radius: {escalar(7)}px;
+        background-color: #0F7C87;
+        color: white;
+        font-size: {escalar_fuente(14)}px;
+        font-weight: bold;
+        border: none;
+    }}
+
+    QPushButton:hover {{ 
+        background-color: #1595A1; 
+    }}
+
+    #boton_cancelar {{
+        background-color: transparent;
+        border: 1px solid #47777D;
+        color: #B8C9CB;
+    }}
+
+    #boton_cancelar:hover {{ 
+        background-color: rgba(255, 255, 255, 0.08); 
+    }}
+
+    #enlace_contrasena {{
+        color: #94B7BB;
+        font-size: {escalar_fuente(12)}px;
+        background: transparent;
+    }}
+
+    #version {{
+        color: #78969A;
+        font-size: {escalar_fuente(10)}px;
+    }}
+""")
+
 
         # ==========================================================
         # LOGO
@@ -348,8 +345,6 @@ class VentanaLogin(QDialog):
             1
         )
         self.panel = panel
-        self.fondo = fondo
-        self.capa = capa
     # ==============================================================
     # CERRAR
     # ==============================================================
@@ -357,18 +352,6 @@ class VentanaLogin(QDialog):
         super().resizeEvent(event)
         if hasattr(self, "panel"):
             self.panel.setGeometry(self.rect())
-            if hasattr(self, "fondo"):
-                self.fondo.setGeometry(self.panel.rect())
-                pixmap_fondo = QPixmap("assets/icons/login/fondo_login.png")
-                self.fondo.setPixmap(
-                    pixmap_fondo.scaled(
-                        self.panel.size(),
-                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                        Qt.TransformationMode.SmoothTransformation
-                    )
-                )
-            if hasattr(self, "capa"):
-                self.capa.setGeometry(self.panel.rect())
                 
     def cerrar_programa(self):
         sys.exit(0)

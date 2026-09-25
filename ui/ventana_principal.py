@@ -693,7 +693,7 @@ class VentanaPrincipal(QWidget):
                 f"color: {color}; font-size: {escalar_fuente(16)}px; font-weight: 700; "
                 "border: none;"
             )
-            layout_tarjeta.addWidget(nombre)
+            #layout_tarjeta.addWidget(nombre)
 
             # ------------------------------------------------------
             # BOTÓN "SELECCIONAR" (checkable, exclusividad manual)
