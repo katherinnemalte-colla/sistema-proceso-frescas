@@ -23,7 +23,7 @@ from PySide6.QtWidgets import QCheckBox
 from PySide6.QtPrintSupport import QPrinterInfo
 from PySide6.QtWidgets import QComboBox, QLineEdit
 from services.hstrco_psje_service import registrar_historico_pesaje
-from repositories.hstrco_psje_repository import  guardar_historico_pesaje,obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, actualizar_historico_pesaje
+from repositories.hstrco_psje_repository import  guardar_historico_pesaje,obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, marcar_historico_reimpreso
 from PySide6.QtGui import QIntValidator
 
 ANCHO_CONTENIDO = 1150  # valor BASE, se escala con escalar() al usarlo
@@ -627,6 +627,9 @@ class FichaTecnica(QWidget):
 
     def _tipo_limpieza_elegido(self, boton):
         self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
+        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
+        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+        self.actualizar_vista_previa(datos)
 
     # ==============================================================
     # BÁSCULA - PESO
@@ -720,8 +723,8 @@ class FichaTecnica(QWidget):
         """)
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(escalar(20), escalar(16), escalar(20), escalar(16))
-        layout.setSpacing(escalar(10))
+        layout.setContentsMargins(escalar(8), escalar(8), escalar(8), escalar(8))
+        layout.setSpacing(escalar(5))
 
         self.lbl_vista_previa_etiqueta = QLabel()
         self.lbl_vista_previa_etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -752,7 +755,7 @@ class FichaTecnica(QWidget):
                 background-color: white;
                 border: 1px solid #D9E2E4;
                 border-radius: 6px;
-                padding: 4px;
+                padding: 4px 30px;
                 font-size: 12px;
             }
         """)
@@ -782,7 +785,7 @@ class FichaTecnica(QWidget):
 
         pixmap = generar_vista_previa_pixmap(datos)
 
-        ancho_max_preview = escalar(575)
+        ancho_max_preview = escalar(588)
         alto_max_preview = escalar(150)
 
         pixmap_escalado = pixmap.scaled(
@@ -814,6 +817,17 @@ class FichaTecnica(QWidget):
             fecha_vencimiento_str=self.fecha_vencimiento_str,
             numero_ticket=self.numero_ticket,
         )
+        
+    def _parametros_con_historico(self) -> dict:
+        parametros = self._construir_parametros_etiqueta()
+
+        if self._historico_seleccionado is not None:
+            historico = self._historico_seleccionado
+            parametros["peso_bascula"] = historico.get("pso_nto", self.peso_neto_kg)
+            parametros["tipo_limpieza_seleccionado"] = historico.get("tpo_lmpza", self.tipo_limpieza_seleccionado)
+            parametros["numero_ticket"] = historico.get("nmro_psta", self.numero_ticket)
+
+        return parametros
 
     def _guardar_peso(self):
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
@@ -836,7 +850,7 @@ class FichaTecnica(QWidget):
         self.combo_historico_pesaje.clear()
         self.combo_historico_pesaje.addItem("", None)  # opción vacía = registro nuevo
         for historico in self._historicos_disponibles:
-            texto = f"{historico['nmro_psta']} - {historico['nmbre_plu']} - {historico['pso_nto']} kg"
+            texto = f"{historico['nmro_psta']} - {historico['pso_nto']} kg"
             self.combo_historico_pesaje.addItem(texto, historico)
         self.combo_historico_pesaje.setCurrentIndex(0)
         self.combo_historico_pesaje.blockSignals(False)
@@ -847,19 +861,81 @@ class FichaTecnica(QWidget):
     def _on_historico_combo_cambiado(self, indice: int):
         self._historico_seleccionado = self.combo_historico_pesaje.itemData(indice)
         self._actualizar_texto_boton()
-        
-    def _on_historico_texto_editado(self, texto: str):
-        # Mientras escribe, se invalida la selección hasta que confirme.
-        if self.combo_historico_pesaje.findText(texto) == -1:
-            self._historico_seleccionado = None
-            self._actualizar_texto_boton()
-
+        self._refrescar_preview_segun_seleccion()
     def _on_historico_texto_confirmado(self):
         texto = self.combo_historico_pesaje.currentText().strip()
         if not texto:
             self._historico_seleccionado = None
             self._actualizar_texto_boton()
+            self._refrescar_preview_segun_seleccion()      # <-- nuevo
             return
+
+        indice = self.combo_historico_pesaje.findText(texto)
+        if indice != -1:
+            self._historico_seleccionado = self.combo_historico_pesaje.itemData(indice)
+            self._actualizar_texto_boton()
+            self._refrescar_preview_segun_seleccion()      # <-- nuevo
+            return
+
+        primer_token = texto.split(" - ")[0].strip()
+        try:
+            nmro_psta_tecleado = int(primer_token)
+        except ValueError:
+            self._historico_seleccionado = None
+            self._actualizar_texto_boton()
+            self._refrescar_preview_segun_seleccion()      # <-- nuevo
+            return
+
+        try:
+            resultados = obtener_ultimos_historicos_pesaje(nmro_psta_tecleado)
+        except Exception as e:
+            print("No fue posible verificar la posta digitada:", e)
+            resultados = []
+
+        self._historico_seleccionado = resultados[0] if resultados else None
+        self._actualizar_texto_boton()
+        self._refrescar_preview_segun_seleccion()          # <-- nuevo
+    """
+    def _on_historico_texto_confirmado(self):
+        # ... tu lógica actual que arma self._historico_seleccionado ...
+        self._refrescar_preview_segun_seleccion()
+    """
+    def _refrescar_preview_segun_seleccion(self):
+        if self._historico_seleccionado is not None:
+            parametros = self._construir_parametros_etiqueta_desde_historico(self._historico_seleccionado)
+        else:
+            self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
+            parametros = self._parametros_etiqueta_actuales
+
+        datos = construir_datos_etiqueta(**parametros)
+        self.actualizar_vista_previa(datos)
+
+        
+    def _refrescar_vista_previa_actual(self):
+        self._parametros_etiqueta_actuales = self._parametros_con_historico()
+        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+        self.actualizar_vista_previa(datos)
+
+    def _reimprimir_historico(self):
+        cnsctvo = self._historico_seleccionado["cnsctvo"]
+        estado_a_enviar = 9 if self.check_inactivar.isChecked() else None
+
+        marcar_historico_reimpreso(
+            cnsctvo,
+            oprdor=self.usuario.nombre_usuario + "-" + CODIGO_PROCESO_DEFAULT,
+            estado=estado_a_enviar,
+        )
+
+        parametros = self._construir_parametros_etiqueta_desde_historico(self._historico_seleccionado)
+        datos_etiqueta = construir_datos_etiqueta(**parametros)
+        imprimir_etiqueta_frescas(datos_etiqueta, self.impresora_seleccionada)
+          
+    def _on_historico_texto_editado(self, texto: str):
+        # Mientras escribe, se invalida la selección hasta que confirme.
+        if self.combo_historico_pesaje.findText(texto) == -1:
+            self._historico_seleccionado = None
+            self._actualizar_texto_boton() 
+            self._refrescar_preview_segun_seleccion()
 
         # ¿Coincide con uno de los 3 ya cargados?
         indice = self.combo_historico_pesaje.findText(texto)
@@ -896,6 +972,29 @@ class FichaTecnica(QWidget):
             self._reimprimir_historico()
         else:
             self._guardar_peso()
+            
+    def _construir_parametros_etiqueta_desde_historico(self, historico: dict) -> dict:
+        producto_para_etiqueta = SimpleNamespace(
+            cdgo_plu=historico.get("cdgo_plu"),
+            nom_prog=historico.get("nmbre_plu", ""),
+        )
+
+        return dict(
+            producto=producto_para_etiqueta,
+            lote=historico.get("nmro_lte"),
+            fecha_produccion=historico.get("fcha_prdccion"),
+            nombre_usuario=self.usuario.nombre_usuario,
+            cod_empresa=historico.get("cdgo_emprsa"),
+            tipo_limpieza_seleccionado=historico.get("tpo_lmpza"),
+            peso_bascula=historico.get("pso_nto"),
+            fecha_sacrificio=historico.get("fcha_scrfcio"),
+            nom_impr_etiq=self.nom_impr_etiq,
+            numEspecie=self.numEspecie,
+            fecha_vencimiento_str=(
+                historico.get("fcha_vnce_ref") or historico.get("fcha_vnce_cong")
+            ),
+            numero_ticket=historico.get("nmro_psta"),  # clave: reutiliza el consecutivo, no genera uno nuevo
+        )
     def _construir_datos_historico_actualizado(self) -> dict:
         # Como los campos de _crear_info_producto no son editables,
         # se reutilizan los valores ya cargados en la sesión actual.
@@ -918,20 +1017,6 @@ class FichaTecnica(QWidget):
             "prcndor": 0,
         }
 
-    def _reimprimir_historico(self):
-        cnsctvo = self._historico_seleccionado["cnsctvo"]
-        estado_a_enviar = 9 if self.check_inactivar.isChecked() else None
-
-        actualizar_historico_pesaje(
-            cnsctvo,
-            self._construir_datos_historico_actualizado(),
-            oprdor=self.usuario.nombre_usuario + "-" + CODIGO_PROCESO_DEFAULT,
-            estado=estado_a_enviar,
-        )
-
-        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
-        datos_etiqueta = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
-        imprimir_etiqueta_frescas(datos_etiqueta, self.impresora_seleccionada)
 
     def _limpiar_y_volver(self):
         bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
@@ -950,10 +1035,11 @@ class FichaTecnica(QWidget):
 
     def _on_peso_actualizado(self, nuevo_peso: float) -> None:
         self.peso_neto_kg = nuevo_peso
-
         self.etiqueta_peso.setText(f"{nuevo_peso:.3f}")
         self.etiqueta_peso_neto.setText(f"Peso neto        {nuevo_peso:.3f} kg ")
 
+        if getattr(self, "_historico_seleccionado", None) is not None:
+            return   # hay un histórico en pantalla: la báscula no debe pisar ese preview
         if not getattr(self, "_parametros_etiqueta_actuales", None):
             return
 

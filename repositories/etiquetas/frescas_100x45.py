@@ -252,7 +252,11 @@ def construir_datos_etiqueta(
 
     # Obtener el peso una sola vez para usar exactamente el mismo valor
     # tanto en el contenido del QR como en los datos de la etiqueta.
-    peso_neto_kg = bascula_service.obtener_ultimo_peso()
+    #peso_neto_kg = bascula_service.obtener_ultimo_peso()
+    peso_neto_kg = (
+    peso_bascula if peso_bascula is not None
+    else bascula_service.obtener_ultimo_peso()
+    )
 
     contenido_qr = _generar_contenido_qr(
         lote=lote,
