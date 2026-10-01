@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt, QDate, QSize
-from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente
+from utils.ventana_utils import escalar, escalar_fuente
 from models.usuarios import Usuario
 from repositories.obtener_lote_fecha_repository import (
     ObtenerLoteFechaRepository
@@ -31,7 +31,9 @@ from PySide6.QtGui import QIntValidator
 RUTA_ICONOS = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "assets",
-    "icons"
+    "icons",
+    "vmain"
+    
 )
 TIPOS_PIEZA_POR_ESPECIE = {
     1: [  # RES
@@ -93,8 +95,14 @@ class VentanaPrincipal(QWidget):
 
         self.setStyleSheet("""
             QWidget {
-                background-color: #F5F8F8;
+                background-color: #EEF5F5;
+                color: #20383A;
                 font-family: "Recoleta";
+            }
+            QFrame#panel_principal {
+                background-color: #FFFFFF;
+                border: 1px solid #D5E6E7;
+                border-radius: 14px;
             }
         """)
 
@@ -114,8 +122,8 @@ class VentanaPrincipal(QWidget):
         # ----------------------------------------------------------
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(escalar(30), escalar(30), escalar(30), escalar(30))
-        layout.setSpacing(escalar(16))
+        layout.setContentsMargins(escalar(24), escalar(18), escalar(24), escalar(18))
+        layout.setSpacing(escalar(14))
 
 
         contenedor = QWidget()
@@ -133,23 +141,44 @@ class VentanaPrincipal(QWidget):
         # ==========================================================
 
 
-        fila_icono = QHBoxLayout()
-        fila_icono.addStretch()
-        fila_icono.addStretch()
+        # Encabezado visual de la pantalla
+        encabezado = QFrame()
+        encabezado.setObjectName("encabezado_principal")
+        encabezado.setMinimumHeight(escalar(62))
+        encabezado.setStyleSheet("""
+            QFrame#encabezado_principal {
+                background-color: #1A6B6B;
+                border: none;
+                border-radius: 10px;
+            }
+        """)
+        fila_encabezado = QHBoxLayout(encabezado)
+        fila_encabezado.setContentsMargins(escalar(22), escalar(8), escalar(22), escalar(8))
+        fila_encabezado.setSpacing(escalar(16))
 
-        layout.addLayout(fila_icono)
+        icono_marca = QLabel()
+        icono_marca.setFixedSize(escalar(42), escalar(42))
+        icono_marca.setAlignment(Qt.AlignCenter)
+        ruta_marca = os.path.join(RUTA_ICONOS, "marca_carnes.png")
+        if os.path.isfile(ruta_marca):
+            pix_marca = QPixmap(ruta_marca)
+            if not pix_marca.isNull():
+                icono_marca.setPixmap(pix_marca.scaled(
+                    QSize(escalar(40), escalar(40)),
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                ))
+        icono_marca.setStyleSheet("background: transparent; border: none;")
+        fila_encabezado.addWidget(icono_marca)
 
-        titulo = QLabel(
-            "Etiquetado Carnes Frescas"
-        )
-
-        titulo.setAlignment(Qt.AlignCenter)
+        titulo = QLabel("Etiquetado Carnes Frescas")
+        titulo.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         titulo.setStyleSheet(
-            f"color: #115E67; font-size:{escalar_fuente(22)}px; font-weight: 700; "
-            "letter-spacing: 0.5px;"
+            f"background: transparent; color: white; font-size:{escalar_fuente(22)}px; "
+            "font-weight: 700; letter-spacing: 0.4px; border: none;"
         )
-
-        layout.addWidget(titulo)
+        fila_encabezado.addWidget(titulo, 1)
+        #layout.addWidget(encabezado)
 
         subtitulo = QLabel(
             "Seleccione la informacion para iniciar el proceso"
@@ -159,7 +188,9 @@ class VentanaPrincipal(QWidget):
 
         subtitulo.setStyleSheet(f"""
             font-size: {escalar_fuente(14)}px;
-            color: #8A9A9C;
+            color: #71898B;
+            background: transparent;
+            padding: 2px;
         """)
 
         layout.addWidget(subtitulo)
@@ -171,7 +202,7 @@ class VentanaPrincipal(QWidget):
         # ==========================================================
 
         fila_campos = QHBoxLayout()
-        fila_campos.setSpacing(escalar(24))
+        fila_campos.setSpacing(escalar(18))
 
 
         # --- Columna: fecha ---
@@ -180,7 +211,7 @@ class VentanaPrincipal(QWidget):
 
 
         etiqueta_fecha = QLabel("Fecha de produccion")
-        etiqueta_fecha.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
+        etiqueta_fecha.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #29494B;")
 
         self.campo_fecha = QDateEdit()
 
@@ -211,7 +242,7 @@ class VentanaPrincipal(QWidget):
 
 
         etiqueta_lote = QLabel("Lote a trabajar")
-        etiqueta_lote.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
+        etiqueta_lote.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #29494B;")
 
         self.campo_lote = QComboBox()
 
@@ -233,7 +264,7 @@ class VentanaPrincipal(QWidget):
 
 
         etiqueta_empresa = QLabel("Empresa")
-        etiqueta_empresa.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #444;")
+        etiqueta_empresa.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #29494B;")
 
         self.campo_empresa = QLineEdit()
         self.campo_empresa.setPlaceholderText("Ingrese el número de empresa")
@@ -262,7 +293,7 @@ class VentanaPrincipal(QWidget):
         etiqueta_especie = QLabel("Especie de animal")
         etiqueta_especie.setAlignment(Qt.AlignCenter)
         etiqueta_especie.setStyleSheet(
-            f"font-size: {escalar_fuente(13)}px; color: #444; font-weight: 600;"
+            f"font-size: {escalar_fuente(13)}px; color: #29494B; font-weight: 600;"
         )
 
         layout.addWidget(etiqueta_especie)
@@ -289,6 +320,12 @@ class VentanaPrincipal(QWidget):
         self.stack_pie.addWidget(self.pagina_continuar)   # índice 0
         self.stack_pie.addWidget(self.pagina_tipo_pieza)  # índice 1
 
+        self.stack_pie.setStyleSheet("""
+            QStackedWidget {
+                background: transparent;
+                border: none;
+            }
+        """)
         layout.addWidget(self.stack_pie)
         self.stack_pie.setSizePolicy(
             QSizePolicy.Expanding,
@@ -369,7 +406,7 @@ class VentanaPrincipal(QWidget):
         self._etiqueta_tipo_pieza = QLabel("Seleccione la parte del animal")
         self._etiqueta_tipo_pieza.setAlignment(Qt.AlignCenter)
         self._etiqueta_tipo_pieza.setStyleSheet(
-            f"font-size: {escalar_fuente(13)}px; color: #444; font-weight: 600;"
+            f"font-size: {escalar_fuente(13)}px; color: #29494B; font-weight: 600;"
         )
         layout_panel.addWidget(self._etiqueta_tipo_pieza)
 
@@ -412,10 +449,10 @@ class VentanaPrincipal(QWidget):
                 }}
                 QPushButton:hover {{
                     background-color: {color};
-                    border: 2px solid #115E67;
+                    border: 2px solid #1A6B6B;
                 }}
                 QPushButton:pressed {{
-                    background-color: #115E67;
+                    background-color: #1A6B6B;
                 }}
             """)
 
@@ -466,16 +503,19 @@ class VentanaPrincipal(QWidget):
         else:
             # Fallback si el archivo no existe, para no dejar la UI rota
             icono.setText("•")
-            icono.setStyleSheet(f"font-size: {escalar_fuente(14)}px; color: #115E67;")
+            icono.setStyleSheet(f"font-size: {escalar_fuente(14)}px; color: #1A6B6B;")
             print(f"no existe el ícono: {ruta_icono}")
 
         contenedor = QFrame()
         contenedor.setFixedHeight(escalar(38))
         contenedor.setStyleSheet("""
             QFrame {
-                border: 1px solid #D9E2E4;
+                border: 1px solid #CFE1E3;
                 border-radius: 8px;
-                background-color: white;
+                background-color: #FFFFFF;
+            }
+            QFrame:focus-within {
+                border: 1px solid #1A6B6B;
             }
         """)
 
@@ -524,7 +564,7 @@ class VentanaPrincipal(QWidget):
                     alternate-background-color: #F5F8F8;
                 }}
                 QCalendarWidget QToolButton {{
-                    color: #115E67;
+                    color: #1A6B6B;
                     font-size: {escalar_fuente(13)}px;
                     font-weight: 600;
                     background-color: transparent;
@@ -538,7 +578,7 @@ class VentanaPrincipal(QWidget):
                     background-color: white;
                 }}
                 QCalendarWidget QSpinBox {{
-                    color: #115E67;
+                    color: #1A6B6B;
                     background-color: white;
                 }}
                 #qt_calendar_navigationbar {{
@@ -549,7 +589,7 @@ class VentanaPrincipal(QWidget):
                 QCalendarWidget QAbstractItemView:enabled {{
                     background-color: white;
                     color: #333;
-                    selection-background-color: #115E67;
+                    selection-background-color: #1A6B6B;
                     selection-color: white;
                     outline: none;
                 }}
@@ -641,8 +681,8 @@ class VentanaPrincipal(QWidget):
             tarjeta.setStyleSheet(f"""
                 QFrame#tarjeta {{
                     background-color: white;
-                    border: 2px solid #E7ECEC;
-                    border-radius: 16px;
+                    border: 1px solid #D9E7E8;
+                    border-radius: 14px;
                 }}
                 QFrame#tarjeta:hover {{
                     border: 2px solid {color};
@@ -651,8 +691,8 @@ class VentanaPrincipal(QWidget):
             tarjeta.setObjectName("tarjeta")
 
             layout_tarjeta = QVBoxLayout(tarjeta)
-            layout_tarjeta.setContentsMargins(escalar(14), escalar(18), escalar(14), escalar(0))
-            layout_tarjeta.setSpacing(escalar(8))
+            layout_tarjeta.setContentsMargins(escalar(14), escalar(14), escalar(14), escalar(0))
+            layout_tarjeta.setSpacing(escalar(10))
 
 
             # ------------------------------------------------------
@@ -661,7 +701,7 @@ class VentanaPrincipal(QWidget):
 
             imagen = QLabel()
             imagen.setAlignment(Qt.AlignCenter)
-            imagen.setMinimumHeight(90)
+            imagen.setMinimumHeight(escalar(145))
 
             ruta_icono = os.path.join(
                 RUTA_ICONOS,
@@ -673,7 +713,7 @@ class VentanaPrincipal(QWidget):
 
                 if not pixmap.isNull():
                     pixmap = QIcon(ruta_icono).pixmap(
-                        QSize(90, 90)
+                        QSize(escalar(126), escalar(126))
                     )
                     imagen.setPixmap(pixmap)
                 else:
@@ -703,7 +743,7 @@ class VentanaPrincipal(QWidget):
 
             boton.setCheckable(True)
             boton.setCursor(Qt.PointingHandCursor)
-            boton.setMinimumHeight(40)
+            boton.setMinimumHeight(escalar(42))
 
             boton.setStyleSheet(f"""
                 QPushButton {{
@@ -767,9 +807,9 @@ class VentanaPrincipal(QWidget):
 
                 tarjeta.setStyleSheet("""
                     QFrame#tarjeta {
-                        background-color: #F5FAFA;
-                        border: 2px solid #115E67;
-                        border-radius: 16px;
+                        background-color: #F2FAFA;
+                        border: 2px solid #1A6B6B;
+                        border-radius: 14px;
                     }
                 """)
 
@@ -778,8 +818,8 @@ class VentanaPrincipal(QWidget):
                 tarjeta.setStyleSheet("""
                     QFrame#tarjeta {
                         background-color: white;
-                        border: 2px solid #E7ECEC;
-                        border-radius: 16px;
+                        border: 1px solid #D9E7E8;
+                        border-radius: 14px;
                     }
                 """)
 

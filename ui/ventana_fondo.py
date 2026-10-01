@@ -17,9 +17,19 @@ from PySide6.QtCore import (
     QDateTime,
     QLocale
 )
-from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido
+
+from utils.ventana_utils import (
+    aplicar_tamano,
+    escalar,
+    escalar_fuente,
+    establecer_factor_temporal,
+    limpiar_factor_temporal,
+    factor_para_contenido
+)
+
 from PySide6.QtGui import QPixmap
 from utils.rutas import ruta_recurso
+
 
 VERSION_APP = "v1.0.0"
 
@@ -30,6 +40,7 @@ class VentanaFondo(QWidget):
         super().__init__()
 
         self.setWindowTitle("Etiquetas 2 en 1")
+
         self.setWindowFlags(
             Qt.Window
             | Qt.WindowMinimizeButtonHint
@@ -48,17 +59,22 @@ class VentanaFondo(QWidget):
 
         self.imagen_fondo.setScaledContents(False)
 
-        pixmap = QPixmap(str(ruta_recurso("assets/icons/login/fondo_login.png")))
+        pixmap = QPixmap(
+            str(
+                ruta_recurso(
+                    "assets/icons/login/fondo_login.jpg"
+                )
+            )
+        )
+
+        self.pixmap_original = pixmap
 
         self.imagen_fondo.setPixmap(
             pixmap
         )
 
-        # La imagen debe quedar detrás de todo
-        self.imagen_fondo.lower()
-
         # ==========================================================
-        # CAPA OSCURA SOBRE LA IMAGEN
+        # CAPA OSCURA
         # ==========================================================
 
         self.capa_oscura = QLabel(self)
@@ -71,9 +87,6 @@ class VentanaFondo(QWidget):
             Qt.WA_TransparentForMouseEvents
         )
 
-        # La capa queda encima de la imagen
-        self.capa_oscura.raise_()
-
         # ==========================================================
         # RELOJ
         # ==========================================================
@@ -85,10 +98,12 @@ class VentanaFondo(QWidget):
         )
 
         self.etiqueta_reloj.setStyleSheet(f"""
-            color: white;
-            font-size: {escalar_fuente(18)}px;
-            font-weight: 500;
-            background: transparent;
+            QLabel {{
+                color: #FFFFFF;
+                font-size: {escalar_fuente(25)}px;
+                font-weight: 500;
+                background: transparent;
+            }}
         """)
 
         # ==========================================================
@@ -104,9 +119,12 @@ class VentanaFondo(QWidget):
         )
 
         self.etiqueta_version.setStyleSheet(f"""
-            color: #C5D4D6;
-            font-size: {escalar_fuente(12)}px;
-            background: transparent;
+            QLabel {{
+                color: #FFFFFF;
+                font-size: {escalar_fuente(12)}px;
+                font-weight: 500;
+                background: transparent;
+            }}
         """)
 
         # ==========================================================
@@ -119,17 +137,25 @@ class VentanaFondo(QWidget):
             escalar(25),
             escalar(12),
             escalar(25),
-            escalar(12)
+            escalar(45)
+        )
+
+        pie.setSpacing(
+            escalar(10)
         )
 
         pie.addWidget(
-            self.etiqueta_reloj
+            self.etiqueta_reloj,
+            0,
+            Qt.AlignLeft | Qt.AlignBottom
         )
 
         pie.addStretch()
 
         pie.addWidget(
-            self.etiqueta_version
+            self.etiqueta_version,
+            0,
+            Qt.AlignRight | Qt.AlignBottom
         )
 
         # ==========================================================
@@ -139,14 +165,18 @@ class VentanaFondo(QWidget):
         layout = QVBoxLayout()
 
         layout.setContentsMargins(
-            escalar(0),
-            escalar(0),
-            escalar(0),
-            escalar(0)
+            0,
+            0,
+            0,
+            0
         )
 
-        layout.addStretch()
+        layout.setSpacing(0)
 
+        # Espacio superior
+        layout.addStretch(1)
+
+        # Pie completamente abajo
         layout.addLayout(
             pie
         )
@@ -155,39 +185,71 @@ class VentanaFondo(QWidget):
             layout
         )
 
-        # Fondo de respaldo por si la imagen tarda en cargar
+        # ==========================================================
+        # FONDO DE RESPALDO
+        # ==========================================================
+
         self.setStyleSheet("""
-            background-color: #082F35;
+            QWidget {
+                background-color: #082F35;
+            }
         """)
 
         # ==========================================================
-        # RELOJ
+        # INICIAR
         # ==========================================================
 
+        self._ajustar_fondo()
         self._iniciar_reloj()
 
-        # Ajustar imagen y capa al tamaño inicial
-        self._ajustar_fondo()
+        # ==========================================================
+        # TAMAÑO
+        # ==========================================================
+
+        aplicar_tamano(
+            self,
+            modo="completo"
+        )
+
+        # ==========================================================
+        # ORDEN DE CAPAS
+        # ==========================================================
+
+        self.imagen_fondo.lower()
+
+        self.capa_oscura.raise_()
+
+        # El contenido debe quedar ENCIMA de la capa oscura
+        self.etiqueta_reloj.raise_()
+        self.etiqueta_version.raise_()
 
     # ==============================================================
-    # AJUSTAR IMAGEN AL TAMAÑO DE LA VENTANA
+    # AJUSTAR IMAGEN Y CAPA
     # ==============================================================
-        aplicar_tamano(
-                    self,
-                    modo="completo"
-                )
+
     def _ajustar_fondo(self):
-        if not hasattr(self, "imagen_fondo") or not hasattr(self, "capa_oscura"):
-         return
+
+        if (
+            not hasattr(self, "imagen_fondo")
+            or not hasattr(self, "capa_oscura")
+        ):
+            return
+
+        # Imagen ocupa toda la ventana
         self.imagen_fondo.setGeometry(
             self.rect()
         )
 
+        # Capa ocupa toda la ventana
         self.capa_oscura.setGeometry(
             self.rect()
         )
 
-        pixmap = self.imagen_fondo.pixmap()
+        pixmap = getattr(
+            self,
+            "pixmap_original",
+            None
+        )
 
         if pixmap is None:
             return
@@ -202,9 +264,17 @@ class VentanaFondo(QWidget):
             pixmap_ajustado
         )
 
-        # Orden de capas
+        # ==========================================================
+        # ORDEN DE CAPAS
+        # ==========================================================
+
         self.imagen_fondo.lower()
+
         self.capa_oscura.raise_()
+
+        # Las etiquetas siempre encima de la capa
+        self.etiqueta_reloj.raise_()
+        self.etiqueta_version.raise_()
 
     # ==============================================================
     # REDIMENSIONAMIENTO

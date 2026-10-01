@@ -24,7 +24,6 @@ from PySide6.QtPrintSupport import QPrinterInfo
 from PySide6.QtWidgets import QComboBox, QLineEdit
 from services.hstrco_psje_service import registrar_historico_pesaje
 from repositories.hstrco_psje_repository import  guardar_historico_pesaje,obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, marcar_historico_reimpreso
-from PySide6.QtGui import QIntValidator
 
 ANCHO_CONTENIDO = 1150  # valor BASE, se escala con escalar() al usarlo
 COLOR_PRIMARIO = "#1a6b6b"

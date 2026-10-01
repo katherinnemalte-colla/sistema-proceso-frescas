@@ -124,51 +124,87 @@ def actualizar_historico_pesaje(
         cursor = conexion.cursor()
         cursor.execute(sql, tuple(valores))
         conexion.commit()
+        cursor.close()    
+def marcar_historico_reimpreso(
+    cnsctvo: int,
+    oprdor: str = "",
+    estado: Optional[int] = None,
+) -> None:
+    """
+    Marca un registro de hstrco_psje como reimpreso, SIN tocar los datos
+    de negocio (producto, lote, peso, fechas, etc.).
+
+    Solo actualiza:
+      - actlzcion (fecha/hora de la reimpresión)
+      - oprdor    (quién reimprimió)
+      - estdo     (opcional, para inactivar con 9)
+    """
+    campo_estado_sql = ", estdo = ?" if estado is not None else ""
+
+    sql = f"""
+        UPDATE [{DB_PRODUCTOS}].dbo.hstrco_psje
+        SET
+            actlzcion = GETDATE(),
+            oprdor = ?{campo_estado_sql}
+        WHERE cnsctvo = ?
+    """
+
+    valores = [oprdor]
+    if estado is not None:
+        valores.append(estado)
+    valores.append(cnsctvo)
+
+    with obtener_conexion() as conexion:
+        cursor = conexion.cursor()
+        cursor.execute(sql, tuple(valores))
+        conexion.commit()
         cursor.close()
 
 
 def obtener_ultimos_historicos_pesaje(nmro_psta: int) -> list[dict]:
-    """
-    Obtiene los 3 registros más recientes de una pista,
-    ordenados desde el más reciente al más antiguo.
-    """
-
     sql = f"""
         SELECT TOP 3
-            cnsctvo,
-            cdgo_plu,
-            nmbre_plu,
-            nmro_lte,
-            pso_nto,
+            cnsctvo, nmro_psta, cdgo_plu, nmbre_plu,
+            nmro_lte, tpo_lmpza,
+            fcha_prdccion, fcha_scrfcio,
+            fcha_vnce_ref, fcha_vnce_cong,
+            pso_nto, pso_tra, pso_brto,
+            cdgo_emprsa, pddo, prcndor,
             actlzcion
         FROM [{DB_PRODUCTOS}].dbo.hstrco_psje
         WHERE nmro_psta = ?
         AND (estdo IS NULL OR estdo <> 9)
         ORDER BY actlzcion DESC
     """
-
     with obtener_conexion() as conexion:
         cursor = conexion.cursor()
         cursor.execute(sql, (nmro_psta,))
         filas = cursor.fetchall()
         cursor.close()
-
         return [
             {
-                "cnsctvo": fila.cnsctvo,
-                "cdgo_plu": fila.cdgo_plu,
-                "nmbre_plu": fila.nmbre_plu,
-                "nmro_lte": fila.nmro_lte,
-                "pso_nto": fila.pso_nto,
-                "actlzcion": fila.actlzcion,
+                "nmro_psta": f.nmro_psta, "cnsctvo": f.cnsctvo,
+                "cdgo_plu": f.cdgo_plu, "nmbre_plu": f.nmbre_plu,
+                "nmro_lte": f.nmro_lte, "tpo_lmpza": f.tpo_lmpza,
+                "fcha_prdccion": f.fcha_prdccion, "fcha_scrfcio": f.fcha_scrfcio,
+                "fcha_vnce_ref": f.fcha_vnce_ref, "fcha_vnce_cong": f.fcha_vnce_cong,
+                "pso_nto": f.pso_nto, "pso_tra": f.pso_tra, "pso_brto": f.pso_brto,
+                "cdgo_emprsa": f.cdgo_emprsa, "pddo": f.pddo, "prcndor": f.prcndor,
+                "actlzcion": f.actlzcion,
             }
-            for fila in filas
+            for f in filas
         ]
+        
 def obtener_ultimos_pesajes_recientes(limite: int = 3) -> list[dict]:
     sql = f"""
         SELECT TOP (?)
             nmro_psta, cnsctvo, cdgo_plu, nmbre_plu,
-            nmro_lte, pso_nto, actlzcion, estdo
+            nmro_lte, tpo_lmpza,
+            fcha_prdccion, fcha_scrfcio,
+            fcha_vnce_ref, fcha_vnce_cong,
+            pso_nto, pso_tra, pso_brto,
+            cdgo_emprsa, pddo, prcndor,
+            actlzcion, estdo
         FROM [{DB_PRODUCTOS}].dbo.hstrco_psje where estdo <> 9
         ORDER BY actlzcion DESC
     """
@@ -181,7 +217,11 @@ def obtener_ultimos_pesajes_recientes(limite: int = 3) -> list[dict]:
             {
                 "nmro_psta": f.nmro_psta, "cnsctvo": f.cnsctvo,
                 "cdgo_plu": f.cdgo_plu, "nmbre_plu": f.nmbre_plu,
-                "nmro_lte": f.nmro_lte, "pso_nto": f.pso_nto,
+                "nmro_lte": f.nmro_lte, "tpo_lmpza": f.tpo_lmpza,
+                "fcha_prdccion": f.fcha_prdccion, "fcha_scrfcio": f.fcha_scrfcio,
+                "fcha_vnce_ref": f.fcha_vnce_ref, "fcha_vnce_cong": f.fcha_vnce_cong,
+                "pso_nto": f.pso_nto, "pso_tra": f.pso_tra, "pso_brto": f.pso_brto,
+                "cdgo_emprsa": f.cdgo_emprsa, "pddo": f.pddo, "prcndor": f.prcndor,
                 "actlzcion": f.actlzcion, "estdo": f.estdo,
             }
             for f in filas
