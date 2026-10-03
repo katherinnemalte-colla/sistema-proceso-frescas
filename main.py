@@ -10,6 +10,28 @@ from models.database import obtener_conexion
 from PySide6.QtGui import QIcon
 import ctypes
 from PySide6.QtCore import QTimer
+import logging
+
+def _obtener_directorio_base() -> str:
+    if getattr(sys, "frozen", True):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
+
+
+def configurar_logging():
+    carpeta_logs = os.path.join(_obtener_directorio_base(), "logs")
+    os.makedirs(carpeta_logs, exist_ok=True)
+
+    ruta_log = os.path.join(carpeta_logs, "sistema.log")
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[
+            logging.FileHandler(ruta_log, encoding="utf-8"),
+        ],
+    )
 
 class ControladorApp:
 
@@ -38,6 +60,7 @@ class ControladorApp:
 
 
 def main():
+    #configurar_logging()
     if sys.platform == "win32":
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("cialta.frescas.1.0")
     app = QApplication(sys.argv)
