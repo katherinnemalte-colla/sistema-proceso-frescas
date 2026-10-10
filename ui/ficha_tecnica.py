@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 from datetime import timedelta, date
 from typing import Optional
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QPixmap
 from types import SimpleNamespace
 from utils.ventana_utils import escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido
@@ -15,13 +15,13 @@ from utils import fechas
 from repositories.etiquetas.frescas_100x45 import (
     construir_datos_etiqueta, imprimir_etiqueta_frescas,
     generar_vista_previa_pixmap, DatosEtiquetaFrescas,
-    CODIGO_PROCESO_DEFAULT
+    CODIGO_PROCESO_DEFAULT, siguiente_consecutivo_etiqueta_canasta,
 )
 from services.bascula_service import bascula_service
 import shiboken6
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtPrintSupport import QPrinterInfo
-from PySide6.QtWidgets import QComboBox, QLineEdit
+from PySide6.QtWidgets import QComboBox
 from services.hstrco_psje_service import registrar_historico_pesaje
 from repositories.hstrco_psje_repository import  guardar_historico_pesaje,obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, marcar_historico_reimpreso
 
@@ -31,6 +31,7 @@ COLOR_PRIMARIO_OSCURO = "#134f4f"
 
 
 class FichaTecnica(QWidget):
+    mensaje_temporal = Signal(str, str)   # (texto, tipo: "error" | "info")
     def __init__(
         self,
         usuario,
@@ -93,6 +94,10 @@ class FichaTecnica(QWidget):
 
         self._crear_interfaz()
         limpiar_factor_temporal()
+        self._timer_mensaje = QTimer(self)
+        self._timer_mensaje.setSingleShot(True)
+        self._timer_mensaje.timeout.connect(self._ocultar_mensaje)
+        self.mensaje_temporal.connect(self._mostrar_mensaje)
         self.numero_ticket = self.nmro_psta  
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         self.actualizar_vista_previa(
@@ -111,6 +116,14 @@ class FichaTecnica(QWidget):
     # ==============================================================
     # DATOS DE VENCIMIENTO
     # ==============================================================
+    def _mostrar_mensaje(self, texto: str, tipo: str = "error"):
+        self.lbl_mensaje.setStyleSheet(self._estilos_mensaje.get(tipo, self._estilos_mensaje["error"]))
+        self.lbl_mensaje.setText(texto)
+        self._timer_mensaje.start(3000)   # si llega otro mensaje, reinicia los 3 s
+
+    def _ocultar_mensaje(self):
+        self.lbl_mensaje.setText("")
+        self.lbl_mensaje.setStyleSheet("")
     def _obtener_datos_vencimiento(self) -> tuple[Optional[int], Optional[int], Optional[date], Optional[date]]:
         codigo_producto = self.producto.get("cdgo_plu")
         codigo_empresa = self.empresa
@@ -199,8 +212,9 @@ class FichaTecnica(QWidget):
         # ----------------------------------------------------------
         # TIPO DE LIMPIEZA
         # ----------------------------------------------------------
-        layout.addWidget(self._crear_seccion_tipo_limpieza())
-
+        #layout.addWidget(self._crear_seccion_tipo_limpieza())
+        self._seccion_limpieza = self._crear_seccion_tipo_limpieza()
+        layout.addWidget(self._seccion_limpieza)
         # ----------------------------------------------------------
         # FILA: báscula + datos adicionales
         # ----------------------------------------------------------
@@ -212,6 +226,18 @@ class FichaTecnica(QWidget):
 
         layout.addLayout(fila_inferior)
 
+        # Los estilos se construyen aquí porque el factor de escala temporal está activo
+        base = (f"font-size: {escalar_fuente(13)}px; font-weight: bold; "
+                f"border-radius: {escalar(6)}px; padding: {escalar(6)}px;")
+        self._estilos_mensaje = {
+            "error": f"background-color: #FDECEA; color: #B00020; {base}",  
+            "info":  f"background-color: #E8F5E9; color: #1B5E20; {base}",
+        }
+        
+        self.lbl_mensaje = QLabel("")
+        self.lbl_mensaje.setAlignment(Qt.AlignCenter)
+        self.lbl_mensaje.setMinimumHeight(escalar(36))  # reserva espacio: los botones no "saltan"
+        layout.addWidget(self.lbl_mensaje)
         # ----------------------------------------------------------
         # BOTONES: Ir a inicio + Guardar peso
         # ----------------------------------------------------------
@@ -626,6 +652,7 @@ class FichaTecnica(QWidget):
 
     def _tipo_limpieza_elegido(self, boton):
         self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
+        self._refrescar_preview_segun_seleccion()
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
         self.actualizar_vista_previa(datos)
@@ -827,18 +854,53 @@ class FichaTecnica(QWidget):
             parametros["numero_ticket"] = historico.get("nmro_psta", self.numero_ticket)
 
         return parametros
-
     def _guardar_peso(self):
+        # Punto 2: nivel de limpieza obligatorio (solo registros nuevos)
+        if self.tipo_limpieza_seleccionado is None:
+            self.mensaje_temporal.emit("Seleccione un nivel de limpieza antes de imprimir", "error")
+            return
+
+        # Punto 1: la posta no puede existir todavía
+        try:
+            ya_existe = bool(obtener_ultimos_historicos_pesaje(self.numero_ticket))
+        except Exception as e:
+            print("No fue posible verificar la posta:", e)
+            self.mensaje_temporal.emit("No se pudo verificar el número de posta", "error")
+            return
+
+        if ya_existe:
+            self.mensaje_temporal.emit(f"La posta {self.numero_ticket} ya existe. Use Reimprime.", "error")
+            self._sincronizar_consecutivo()
+            self._cargar_historicos_pesaje()
+            return
+
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+
+        try:
+            registrar_historico_pesaje(
+                self._parametros_etiqueta_actuales,
+                oprdor=self.usuario.nombre_usuario + "-" + CODIGO_PROCESO_DEFAULT,
+                nmro_psta=self.numero_ticket,
+            )
+        except Exception as e:
+            print("Error guardando el histórico:", e)
+            self.mensaje_temporal.emit("No se pudo guardar el pesaje; la etiqueta no se imprimió", "error")
+            return
+
         imprimir_etiqueta_frescas(datos, self.impresora_seleccionada)
-        registrar_historico_pesaje(
-            self._parametros_etiqueta_actuales,
-            oprdor=self.usuario.nombre_usuario + "-" + CODIGO_PROCESO_DEFAULT,
-            nmro_psta=self.numero_ticket,
-        )
-        self._cargar_historicos_pesaje()  # nuevo: refresca para que el botón pase a "Reimprime"
-    def _cargar_historicos_pesaje(self):
+
+        self._sincronizar_consecutivo()    # siguiente posta, sin tocar nada
+        self._cargar_historicos_pesaje()   # refresca combo y preview con la nueva posta
+
+    def _sincronizar_consecutivo(self):
+        try:
+            self.numero_ticket = siguiente_consecutivo_etiqueta_canasta()
+        except Exception as e:
+            print("No fue posible obtener el siguiente consecutivo:", e)
+            self.mensaje_temporal.emit("No se pudo obtener el siguiente número de posta", "error")
+           
+    def _cargar_historicos_pesaje(self, seleccionar_posta=None):
         try:
             self._historicos_disponibles = obtener_ultimos_pesajes_recientes(limite=3)
         except Exception as e:
@@ -847,33 +909,37 @@ class FichaTecnica(QWidget):
 
         self.combo_historico_pesaje.blockSignals(True)
         self.combo_historico_pesaje.clear()
-        self.combo_historico_pesaje.addItem("", None)  # opción vacía = registro nuevo
-        for historico in self._historicos_disponibles:
-            texto = f"{historico['nmro_psta']} - {historico['pso_nto']} kg"
-            self.combo_historico_pesaje.addItem(texto, historico)
-        self.combo_historico_pesaje.setCurrentIndex(0)
+        self.combo_historico_pesaje.addItem("", None)
+        indice_sel = 0
+        for i, h in enumerate(self._historicos_disponibles, start=1):
+            self.combo_historico_pesaje.addItem(f"{h['nmro_psta']} - {h['pso_nto']} kg", h)
+            if seleccionar_posta is not None and h["nmro_psta"] == seleccionar_posta:
+                indice_sel = i
+        self.combo_historico_pesaje.setCurrentIndex(indice_sel)
         self.combo_historico_pesaje.blockSignals(False)
 
-        self._historico_seleccionado = None
+        self._historico_seleccionado = self.combo_historico_pesaje.itemData(indice_sel)
         self._actualizar_texto_boton()
-    
+        self._refrescar_preview_segun_seleccion()
+
     def _on_historico_combo_cambiado(self, indice: int):
         self._historico_seleccionado = self.combo_historico_pesaje.itemData(indice)
         self._actualizar_texto_boton()
         self._refrescar_preview_segun_seleccion()
+    
     def _on_historico_texto_confirmado(self):
         texto = self.combo_historico_pesaje.currentText().strip()
         if not texto:
             self._historico_seleccionado = None
             self._actualizar_texto_boton()
-            self._refrescar_preview_segun_seleccion()      # <-- nuevo
+            self._refrescar_preview_segun_seleccion()
             return
 
         indice = self.combo_historico_pesaje.findText(texto)
         if indice != -1:
             self._historico_seleccionado = self.combo_historico_pesaje.itemData(indice)
             self._actualizar_texto_boton()
-            self._refrescar_preview_segun_seleccion()      # <-- nuevo
+            self._refrescar_preview_segun_seleccion()
             return
 
         primer_token = texto.split(" - ")[0].strip()
@@ -882,7 +948,7 @@ class FichaTecnica(QWidget):
         except ValueError:
             self._historico_seleccionado = None
             self._actualizar_texto_boton()
-            self._refrescar_preview_segun_seleccion()      # <-- nuevo
+            self._refrescar_preview_segun_seleccion()
             return
 
         try:
@@ -892,13 +958,10 @@ class FichaTecnica(QWidget):
             resultados = []
 
         self._historico_seleccionado = resultados[0] if resultados else None
+        if not resultados:
+            self.mensaje_temporal.emit(f"No se encontró la posta {nmro_psta_tecleado}", "error")
         self._actualizar_texto_boton()
-        self._refrescar_preview_segun_seleccion()          # <-- nuevo
-    """
-    def _on_historico_texto_confirmado(self):
-        # ... tu lógica actual que arma self._historico_seleccionado ...
         self._refrescar_preview_segun_seleccion()
-    """
     def _refrescar_preview_segun_seleccion(self):
         if self._historico_seleccionado is not None:
             parametros = self._construir_parametros_etiqueta_desde_historico(self._historico_seleccionado)
@@ -928,12 +991,11 @@ class FichaTecnica(QWidget):
         parametros = self._construir_parametros_etiqueta_desde_historico(self._historico_seleccionado)
         datos_etiqueta = construir_datos_etiqueta(**parametros)
         imprimir_etiqueta_frescas(datos_etiqueta, self.impresora_seleccionada)
-          
+        
     def _on_historico_texto_editado(self, texto: str):
-        # Mientras escribe, se invalida la selección hasta que confirme.
-        if self.combo_historico_pesaje.findText(texto) == -1:
+        if self.combo_historico_pesaje.findText(texto) == -1 and self._historico_seleccionado is not None:
             self._historico_seleccionado = None
-            self._actualizar_texto_boton() 
+            self._actualizar_texto_boton()
             self._refrescar_preview_segun_seleccion()
 
         # ¿Coincide con uno de los 3 ya cargados?
@@ -963,9 +1025,13 @@ class FichaTecnica(QWidget):
         
 
     def _actualizar_texto_boton(self):
-        self.boton_guardar.setText(
-            "Reimprime" if self._historico_seleccionado is not None else "Imprime"
-        )
+        reimpresion = self._historico_seleccionado is not None
+        self.boton_guardar.setText("Reimprime" if reimpresion else "Imprime")
+        self._seccion_limpieza.setEnabled(not reimpresion)   # nada editable al reimprimir
+        self.check_inactivar.setEnabled(reimpresion)         # solo tiene sentido al reimprimir
+        if not reimpresion:
+            self.check_inactivar.setChecked(False)
+            
     def _accion_boton_principal(self):
         if self._historico_seleccionado is not None:
             self._reimprimir_historico()
@@ -1041,7 +1107,7 @@ class FichaTecnica(QWidget):
             return   # hay un histórico en pantalla: la báscula no debe pisar ese preview
         if not getattr(self, "_parametros_etiqueta_actuales", None):
             return
-
+        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
         datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
         self.actualizar_vista_previa(datos)
 
