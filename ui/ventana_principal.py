@@ -28,6 +28,7 @@ from utils.mensajes import MensajeVentanaFlujo
 from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QIntValidator
+from utils.tiempos import medir
 RUTA_ICONOS = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "assets",
@@ -1033,6 +1034,7 @@ class VentanaPrincipal(QWidget):
         )
 
         try:
+            with medir("lotes: consulta al repositorio"):
 
             # ------------------------------------------------------
             # FECHA + ESPECIE
@@ -1043,68 +1045,68 @@ class VentanaPrincipal(QWidget):
             # positional argument: num_especie".
             # ------------------------------------------------------
 
-            if id_especie:
+                if id_especie:
 
-                lotes = (
-                    self.repository
-                    .obtener_lotes_por_especie(
-                        fecha_bd,
-                        id_especie
+                    lotes = (
+                        self.repository
+                        .obtener_lotes_por_especie(
+                            fecha_bd,
+                            id_especie
+                        )
                     )
-                )
 
-            # ------------------------------------------------------
-            # SOLO FECHA
-            # ------------------------------------------------------
+                # ------------------------------------------------------
+                # SOLO FECHA
+                # ------------------------------------------------------
 
-            else:
+                else:
 
-                lotes = (
-                    self.repository
-                    .obtener_lotes_por_fecha(
-                        fecha_bd
+                    lotes = (
+                        self.repository
+                        .obtener_lotes_por_fecha(
+                            fecha_bd
+                        )
                     )
-                )
 
             # ------------------------------------------------------
             # LIMPIAR COMBO
             # ------------------------------------------------------
-
-            self.campo_lote.clear()
+            with medir("lotes: llenar el combo"):
+                self.campo_lote.clear()
 
             # ------------------------------------------------------
             # SIN RESULTADOS
             # ------------------------------------------------------
 
-            if not lotes:
+                if not lotes:
 
-                self.campo_lote.addItem(
-                    "No hay lotes disponibles"
-                )
+                    self.campo_lote.addItem(
+                        "No hay lotes disponibles"
+                    )
 
-                self.campo_lote.setCurrentIndex(
-                    0
-                )
-                self._actualizar_estado_botones_especie()
+                    self.campo_lote.setCurrentIndex(
+                        0
+                    )
+                    self._actualizar_estado_botones_especie()
 
-                return
+                    return
 
             # ------------------------------------------------------
             # CARGAR LOTES
             # ------------------------------------------------------
 
-            self.campo_lote.addItem(
-                "Seleccione un lote",
-                None
-            )
-
-            for lote in lotes:
-
                 self.campo_lote.addItem(
-                    str(lote.lote),
-                    lote
+                    "Seleccione un lote",
+                    None
                 )
-                self._actualizar_estado_botones_especie()
+
+                for lote in lotes:
+
+                    self.campo_lote.addItem(
+                        str(lote.lote),
+                        lote
+                    )
+                    self._actualizar_estado_botones_especie()
             
         except Exception as e:
 
