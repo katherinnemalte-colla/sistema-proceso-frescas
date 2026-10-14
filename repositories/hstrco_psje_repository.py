@@ -2,43 +2,38 @@ import os
 from models.database import obtener_conexion
 from PySide6.QtGui import QIntValidator
 from typing import Optional
+from config.settings import DB_DATABASE
 
+DB_PRODUCTOS = DB_DATABASE
 
-DB_PRODUCTOS = os.getenv("DB_DATABASE")
-if not DB_PRODUCTOS:
-    raise RuntimeError("Falta la variable de entorno DB_DATABASE")
-
-def guardar_historico_pesaje(datos: dict) -> None:
+def guardar_historico_pesaje(datos: dict) -> bool:
+    """
+    Inserta el pesaje solo si la posta (nmro_psta) no existe todavía.
+    Devuelve True si insertó, False si ya existía (en ese caso se debe reimprimir).
+    """
     sql = f"""
         INSERT INTO [{DB_PRODUCTOS}].dbo.hstrco_psje (
-            nmro_psta,
-            prcso,
-            cdgo_plu,
-            nmbre_plu,
-            tpo_lmpza,
-            nmro_lte,
-            fcha_prdccion,
-            fcha_vnce_ref,
-            fcha_vnce_cong,
-            fcha_scrfcio,
-            pso_nto,
-            pso_tra,
-            pso_brto,
-            cdgo_emprsa,
-            pddo,
-            prcndor,
-            actlzcion,
-            oprdor,
-            estdo
+            nmro_psta, prcso, cdgo_plu, nmbre_plu, tpo_lmpza, nmro_lte,
+            fcha_prdccion, fcha_vnce_ref, fcha_vnce_cong, fcha_scrfcio,
+            pso_nto, pso_tra, pso_brto, cdgo_emprsa, pddo, prcndor,
+            actlzcion, oprdor, estdo
         )
-        VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, GETDATE(), ? , ?
+        SELECT
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?,
+            GETDATE(), ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM [{DB_PRODUCTOS}].dbo.hstrco_psje WITH (UPDLOCK, HOLDLOCK)
+            WHERE nmro_psta = ?
         )
     """
 
+    nmro_psta = datos.get("nmro_psta", 0)
+
     valores = (
-        datos.get("nmro_psta", 0),
+        nmro_psta,
         datos.get("prcso", 1),
         datos.get("cdgo_plu", 0),
         datos.get("nmbre_plu", ""),
@@ -56,10 +51,12 @@ def guardar_historico_pesaje(datos: dict) -> None:
         datos.get("prcndor", 0),
         datos.get("oprdor", ""),
         datos.get("estdo", 1),
+        nmro_psta,  # parámetro del NOT EXISTS
     )
     with obtener_conexion() as conexion:
         cursor = conexion.cursor()
         cursor.execute(sql, valores)
+        insertado = cursor.rowcount > 0
         conexion.commit()
         cursor.close()
 

@@ -13,7 +13,7 @@ from PySide6.QtCore import QTimer
 import logging
 
 def _obtener_directorio_base() -> str:
-    if getattr(sys, "frozen", True):
+    if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     else:
         return os.path.dirname(os.path.abspath(__file__))
@@ -60,7 +60,7 @@ class ControladorApp:
 
 
 def main():
-    #configurar_logging()
+    configurar_logging()
     if sys.platform == "win32":
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("cialta.frescas.1.0")
     app = QApplication(sys.argv)

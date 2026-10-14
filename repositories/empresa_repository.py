@@ -2,11 +2,9 @@ from typing import Optional
 import os
 
 from models.database import obtener_conexion
+from config.settings import DB_DATABASE
 
-DB_PRODUCTOS = os.getenv("DB_DATABASE")
-
-if not DB_PRODUCTOS:
-    raise RuntimeError("Falta la variable de entorno DB_DATABASE")
+DB_PRODUCTOS = DB_DATABASE
 
 
 def _consultar_valor_basicas(eleme_grup: str, nombr_grup: str = "FACTURA_POS") -> Optional[str]:

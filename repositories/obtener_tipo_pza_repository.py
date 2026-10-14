@@ -1,10 +1,10 @@
 import os
 from dataclasses import dataclass
 from typing import List, Optional
+from config.settings import DB_DATABASE,DB_DATABASE_1
 
-
-DB_PRODUCTOS = os.getenv("DB_DATABASE")
-DB_IMAGENES = os.getenv("DB_DATABASE_1")
+DB_PRODUCTOS = DB_DATABASE
+DB_IMAGENES = DB_DATABASE_1
 
 # Cantidad de productos por página dentro de una misma letra.
 TAMANO_PAGINA = 6

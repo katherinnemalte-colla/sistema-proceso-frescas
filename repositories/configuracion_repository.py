@@ -2,11 +2,9 @@ import logging
 import re
 from typing import Callable, Optional
 import os
-
+from config.settings import DB_DATABASE
 logger = logging.getLogger(__name__)
-
-DB_PRODUCTOS = os.getenv("DB_DATABASE")
-
+DB_PRODUCTOS = DB_DATABASE
 
 def obtener_puerto_com(
     obtener_conexion: Callable,

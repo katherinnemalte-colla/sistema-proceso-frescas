@@ -12,8 +12,9 @@ from dataclasses import dataclass
 from typing import List, Optional
 from datetime import date, timedelta
 from typing import Optional
+from config.settings import DB_DATABASE
 
-DB_PRODUCTOS = os.getenv("DB_DATABASE")
+DB_PRODUCTOS = DB_DATABASE
 
 @dataclass
 class FichaTecnicaProducto:
