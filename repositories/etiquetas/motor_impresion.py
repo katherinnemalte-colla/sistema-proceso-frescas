@@ -18,7 +18,13 @@ import qrcode
 from PySide6.QtCore import QMarginsF, QRectF, QSizeF
 from PySide6.QtGui import QImage, QPageLayout, QPageSize, QPainter
 from PySide6.QtPrintSupport import QPrinter
+import json
+import socket
+from datetime import datetime
+from pathlib import Path
+import logging
 
+logger = logging.getLogger(__name__)
 
 # ======================================================================
 # ENVÍO DIRECTO A LA ZEBRA (ZPL / RAW)
@@ -28,7 +34,7 @@ from PySide6.QtPrintSupport import QPrinter
 UMBRAL_NEGRO = 128
 
 
-def imagen_a_zpl(img, medio="Y", desplaz_x=0, desplaz_y=0):
+def imagen_a_zpl(img, medio="N", desplaz_x=0, desplaz_y=0):
     """
     Convierte una imagen a un comando ZPL (^GFA) en blanco y negro.
 
@@ -44,6 +50,12 @@ def imagen_a_zpl(img, medio="Y", desplaz_x=0, desplaz_y=0):
         ^LT  desplazamiento superior (0)
         ^PON orientación normal
     """
+    ancho_total, alto_total = img.width(), img.height()   # para ^PW y ^LL
+    rec_x, rec_y = max(0, -desplaz_x), max(0, -desplaz_y)
+    if rec_x or rec_y:
+        img = img.copy(rec_x, rec_y, ancho_total - rec_x, alto_total - rec_y)
+    fo_x, fo_y = max(0, desplaz_x), max(0, desplaz_y)
+    
     img = img.convertToFormat(QImage.Format.Format_Grayscale8)
     ancho, alto = img.width(), img.height()
     bytes_fila = (ancho + 7) // 8          # 8 puntos por byte
@@ -66,17 +78,12 @@ def imagen_a_zpl(img, medio="Y", desplaz_x=0, desplaz_y=0):
 
     total = len(datos)
     return (
-        f"^XA^MN{medio}^PW{ancho}^LL{alto}^LH0,0^LT{desplaz_y}^LS{desplaz_x}^PON"
-        f"^FO0,0^GFA,{total},{total},{bytes_fila},{datos.hex().upper()}^FS"
+        f"^XA^MN{medio}^PW{ancho_total}^LL{alto_total}"
+        f"^LH0,0^LT0^LS0^PON^PMN"
+        f"^FO{fo_x},{fo_y}^GFA,{total},{total},{bytes_fila},{datos.hex().upper()}^FS"
         f"^XZ"
     )
-    """
-    return (
-        f"^XA^MN{medio}^PW{ancho}^LL{alto}^LH0,0^LT0^PON"
-        f"^FO0,0^GFA,{total},{total},{bytes_fila},{datos.hex().upper()}^FS"
-        f"^XZ"
-    )
-"""
+    
 def zpl_marco_prueba(ancho_dots, alto_dots, medio="Y", desplaz_x=0, desplaz_y=0):
     return (
         f"^XA^MN{medio}^PW{ancho_dots}^LL{alto_dots}^LH0,0"
@@ -96,34 +103,37 @@ def zpl_regla_prueba(ancho_dots: int, alto_dots: int, medio: str = "Y") -> str:
         f"{marcas}^FO0,0^GB{ancho_dots},{alto_dots},4^FS^XZ"
     )
 def enviar_zpl(nombre_impresora: str, zpl: str) -> None:
-    """
-    Envía el ZPL a la impresora en modo RAW (requiere Windows + pywin32).
-    `nombre_impresora` debe ser exactamente el nombre que muestra Windows.
-    """
-    # Import diferido: así el resto del módulo (vista previa, QR) sigue
-    # funcionando aunque pywin32 no esté instalado.
     import win32print
 
-    try:
-        handle = win32print.OpenPrinter(nombre_impresora)
-    except Exception as exc:
-        disponibles = [
-            p[2] for p in win32print.EnumPrinters(
-                win32print.PRINTER_ENUM_LOCAL
-                | win32print.PRINTER_ENUM_CONNECTIONS
-            )
-        ]
-        raise RuntimeError(
-            f"No se pudo abrir la impresora '{nombre_impresora}'. "
-            f"Impresoras disponibles: {disponibles}"
-        ) from exc
+    datos = zpl.encode("ascii")
+    logger.info("ENVIO ZPL impresora=%r bytes=%d", nombre_impresora, len(datos))
+    logger.debug("ZPL inicio: %s", zpl[:120])
 
+    handle = win32print.OpenPrinter(nombre_impresora)
     try:
-        win32print.StartDocPrinter(handle, 1, ("Etiqueta", None, "RAW"))
+        job = win32print.StartDocPrinter(handle, 1, ("Etiqueta", None, "RAW"))
+        logger.info("StartDocPrinter OK job_id=%s", job)
         win32print.StartPagePrinter(handle)
-        win32print.WritePrinter(handle, zpl.encode("ascii"))
+
+        escritos = win32print.WritePrinter(handle, datos)
+        logger.info("WritePrinter escritos=%d de %d", escritos, len(datos))
+        if escritos != len(datos):
+            logger.error("Se escribieron MENOS bytes de los esperados")
+
         win32print.EndPagePrinter(handle)
         win32print.EndDocPrinter(handle)
+        logger.info("EndDocPrinter OK")
+
+        # Estado del trabajo en la cola de Windows
+        try:
+            for j in win32print.EnumJobs(handle, 0, -1, 1):
+                logger.info("Cola: id=%s estado=%s datatype=%s",
+                            j["JobId"], j["Status"], j.get("pDatatype"))
+        except Exception as exc:
+            logger.warning("No se pudo leer la cola: %s", exc)
+    except Exception:
+        logger.exception("Fallo enviando ZPL")
+        raise
     finally:
         win32print.ClosePrinter(handle)
 
@@ -248,3 +258,138 @@ def linea_condicional(etiqueta: str, valor) -> str:
     if not texto:
         return ""
     return f"{etiqueta}{texto}"
+
+# ======================================================================
+# DIAGNÓSTICO DE IMPRESORA (para comparar entre computadores)
+# ======================================================================
+
+
+
+RUTA_LOG_DIAGNOSTICO = Path("logs") / "diagnostico_impresoras.log"
+
+
+def diagnosticar_impresora_raw(nombre_impresora: str) -> dict:
+    """
+    Para impresoras RAW/ZPL (Zebra, Godex): consulta la configuración que
+    Windows tiene guardada de esa impresora específica, para comparar
+    entre computadores si la impresora/driver está configurada distinto.
+    """
+    import win32print
+
+    diagnostico = {
+        "fecha": datetime.now().isoformat(timespec="seconds"),
+        "computador": socket.gethostname(),
+        "impresora": nombre_impresora,
+    }
+
+    try:
+        handle = win32print.OpenPrinter(nombre_impresora)
+        try:
+            info = win32print.GetPrinter(handle, 2)
+        finally:
+            win32print.ClosePrinter(handle)
+
+        devmode = info.get("pDevMode")
+
+        diagnostico.update({
+            "driver_name": info.get("pDriverName"),
+            "port_name": info.get("pPortName"),
+            "print_processor": info.get("pPrintProcessor"),
+            "datatype": info.get("pDatatype"),
+            "status": info.get("Status"),
+        })
+
+        if devmode is not None:
+            diagnostico["devmode"] = {
+                "paper_width_decimm": devmode.PaperWidth,    # décimas de mm
+                "paper_length_decimm": devmode.PaperLength,  # décimas de mm
+                "print_quality_dpi": devmode.PrintQuality,   # DPI real, si es positivo
+                "orientation": devmode.Orientation,
+                "scale": devmode.Scale,
+            }
+    except Exception as exc:
+        diagnostico["error"] = str(exc)
+
+    _guardar_diagnostico(diagnostico)
+    return diagnostico
+
+def imprimir_log_diagnostico_raw(diagnostico: dict) -> None:
+    logger.info("=" * 60)
+    logger.info(f"Computador raw:  {diagnostico['computador']}")
+    logger.info(f"Impresora raw:   {diagnostico['impresora']}")
+    if "error" in diagnostico:
+        logger.info(f"ERROR raw:       {diagnostico['error']}")
+    else:
+        logger.info(f"Driver raw:      {diagnostico.get('driver_name')}")
+        logger.info(f"Puerto raw:      {diagnostico.get('port_name')}")
+        logger.info(f"Datatype rw:    {diagnostico.get('datatype')}")
+        logger.info(f"DevMode rw:     {diagnostico.get('devmode')}")
+    logger.info("=" * 60)
+
+def diagnosticar_impresora(
+    nombre_impresora: str,
+    ancho_mm: float,
+    alto_mm: float,
+    margen_mm: float = 0,
+) -> dict:
+    """
+    Crea el QPrinter con crear_impresora() y extrae todos los valores
+    relevantes (tamaño de hoja, área imprimible, márgenes, DPI) para
+    poder comparar la configuración real entre distintos computadores.
+
+    Registra el resultado en logs/diagnostico_impresoras.log (una línea
+    JSON por cada ejecución) y también lo retorna por si quieres
+    mostrarlo en pantalla o en una ventana de debug.
+    """
+    impresora = crear_impresora(nombre_impresora, ancho_mm, alto_mm, margen_mm)
+    layout = impresora.pageLayout()
+    dpi = impresora.resolution()
+
+    hoja = layout.fullRect(QPageLayout.Unit.Millimeter)
+    imprimible = layout.paintRect(QPageLayout.Unit.Millimeter)
+    margenes_min = layout.minimumMargins()
+
+    diagnostico = {
+        "fecha": datetime.now().isoformat(timespec="seconds"),
+        "computador": socket.gethostname(),
+        "impresora": nombre_impresora,
+        "solicitado_mm": {"ancho": ancho_mm, "alto": alto_mm, "margen": margen_mm},
+        "dpi": dpi,
+        "orientacion": layout.orientation().name,
+        "hoja_mm": {
+            "x": round(hoja.x(), 3), "y": round(hoja.y(), 3),
+            "ancho": round(hoja.width(), 3), "alto": round(hoja.height(), 3),
+        },
+        "imprimible_mm": {
+            "x": round(imprimible.x(), 3), "y": round(imprimible.y(), 3),
+            "ancho": round(imprimible.width(), 3), "alto": round(imprimible.height(), 3),
+        },
+        "margenes_minimos_mm": {
+            "izq": margenes_min.left(), "der": margenes_min.right(),
+            "arriba": margenes_min.top(), "abajo": margenes_min.bottom(),
+        },
+        "fullPage": impresora.fullPage(),
+    }
+
+    _guardar_diagnostico(diagnostico)
+    return diagnostico
+
+
+def _guardar_diagnostico(diagnostico: dict) -> None:
+    RUTA_LOG_DIAGNOSTICO.parent.mkdir(parents=True, exist_ok=True)
+    with open(RUTA_LOG_DIAGNOSTICO, "a", encoding="utf-8") as archivo:
+        archivo.write(json.dumps(diagnostico, ensure_ascii=False) + "\n")
+
+
+def imprimir_log_diagnostico(diagnostico: dict) -> None:
+    """Imprime el diagnóstico en consola de forma legible (para debug rápido)."""
+    logger.info("=" * 60)
+    logger.info(f"Computador:  {diagnostico['computador']}")
+    logger.info(f"Impresora:   {diagnostico['impresora']}")
+    logger.info(f"Fecha:       {diagnostico['fecha']}")
+    logger.info(f"DPI:         {diagnostico['dpi']}")
+    logger.info(f"Solicitado:  {diagnostico['solicitado_mm']}")
+    logger.info(f"Hoja real:   {diagnostico['hoja_mm']}")
+    logger.info(f"Imprimible:  {diagnostico['imprimible_mm']}")
+    logger.info(f"Márgenes min:{diagnostico['margenes_minimos_mm']}")
+    logger.info("=" * 60)

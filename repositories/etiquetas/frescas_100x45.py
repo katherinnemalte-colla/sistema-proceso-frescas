@@ -1,14 +1,3 @@
-"""
-Etiqueta de productos frescos (100 x 45 mm) para Zebra ZD230 (203 DPI).
-
-El diseño se dibuja UNA sola vez (_dibujar_contenido_etiqueta) y se usa
-tanto en la vista previa como en la impresión, así ambas son idénticas.
-
-La impresión se hace enviando ZPL en modo RAW (ver motor_impresion.py),
-por lo que no depende del papel/márgenes configurados en el driver de
-Windows de cada computador.
-"""
-
 import os
 import socket
 from dataclasses import dataclass
@@ -32,7 +21,7 @@ from repositories.consecutivo_repository import (
 from services.bascula_service import bascula_service
 from utils import fechas
 from utils.rutas import ruta_recurso
-from .motor_impresion import crear_impresora, crear_painter,dibujar_qr, enviar_zpl, imagen_a_zpl,zpl_marco_prueba,zpl_regla_prueba
+from .motor_impresion import crear_impresora, crear_painter,dibujar_qr, enviar_zpl, imagen_a_zpl,zpl_marco_prueba,zpl_regla_prueba,diagnosticar_impresora, imprimir_log_diagnostico,diagnosticar_impresora_raw,imprimir_log_diagnostico_raw
 
 
 # ======================================================================
@@ -41,8 +30,9 @@ from .motor_impresion import crear_impresora, crear_painter,dibujar_qr, enviar_z
 
 # Tamaño físico de la etiqueta.
 ANCHO_MM = 100
-ALTO_MM = 45
-MODO_PRUEBA_MARCO = True
+ALTO_MM = 50
+MODO_PRUEBA_MARCO = False
+PRUEBA_ZPL = "C"   # "A", "B" o "C"
 # Resolución de la Zebra ZD230: 203 DPI ≈ 8 puntos por mm.
 DOTS_POR_MM = 8
 ANCHO_DOTS = ANCHO_MM * DOTS_POR_MM   # 800
@@ -50,7 +40,7 @@ ALTO_DOTS = ALTO_MM * DOTS_POR_MM     # 360
 
 # Tipo de sensor de la Zebra: "Y" = etiquetas con separación (gap),
 # "M" = marca negra, "N" = continuo.
-MEDIO_ZEBRA = "Y"
+MEDIO_ZEBRA = "N"
 
 # Coordenadas lógicas de dibujo: 1 unidad = 0,1 mm (1000 x 450 = 100 x 45 mm).
 ANCHO = ANCHO_MM * 10
@@ -60,20 +50,21 @@ ALTO = ALTO_MM * 10
 # Las térmicas tienen ~1 mm de tolerancia entre etiqueta y etiqueta: con un
 # margen de 0,4 mm lo que queda pegado al borde se corta a veces.
 # Súbelo si todavía se corta; bájalo si necesitas más espacio.
-MARGEN = 12
+MARGEN = 25
 
-QR_SIZE = 160
-SEPARACION_QR = 10
+QR_SIZE = 170
+SEPARACION_QR = 7
 SEPARACION_BLOQUES = 10   # espacio entre el texto superior y la franja inferior
 GROSOR_LINEA = 5
-
+DESPLAZ_X = -10
+DESPLAZ_Y = -25
 # La franja inferior (logo + categoría + código) arranca justo debajo de la
 # línea divisoria, que queda SEPARACION_BLOQUES por encima del QR.
 ALTO_BLOQUE_INFERIOR = QR_SIZE + SEPARACION_BLOQUES
 
 # Dibuja un marco en el borde de la etiqueta (vista previa e impresión).
 # Útil para comprobar qué borde se corta; dejar en False en producción.
-MARCO_DE_PRUEBA = False
+MARCO_DE_PRUEBA = True
 
 TEMPERATURA_MINIMA_C = 0
 TEMPERATURA_MAXIMA_C = 4
@@ -495,7 +486,7 @@ def _dibujar_contenido_etiqueta(
     texto(
         x_entre_qr, y_categoria, ancho_entre_qr, alto_categoria,
         datos.categoria,
-        tamano=27, negrita=True,
+        tamano=37, negrita=True,
         alineacion=Qt.AlignmentFlag.AlignCenter,
     )
 
@@ -607,16 +598,38 @@ def generar_pdf_etiqueta(datos: DatosEtiquetaFrescas, ruta_pdf: str) -> None:
 
 def _imprimir_con_driver(datos: DatosEtiquetaFrescas, nombre_impresora: str) -> None:
     """
-    Camino por driver de Windows (QPrinter). Se usa para impresoras
-    virtuales como 'Microsoft Print to PDF', que no entienden ZPL.
+    Camino por driver de Windows (QPrinter). Se adapta a cualquier tamaño
+    de página que el driver reporte (muchos ignoran el tamaño personalizado
+    y usan el más parecido de su catálogo), sin deformar ni recortar el
+    diseño: se escala manteniendo la proporción y se centra.
     """
+    diagnostico = diagnosticar_impresora(nombre_impresora, ANCHO_MM, ALTO_MM)
+    imprimir_log_diagnostico(diagnostico)
+
     impresora = crear_impresora(nombre_impresora, ANCHO_MM, ALTO_MM, margen_mm=0)
     painter = crear_painter(impresora)
 
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+    # Área real imprimible que reporta el driver, en píxeles de dispositivo.
+    layout = impresora.pageLayout()
+    area = layout.paintRectPixels(impresora.resolution())
+
+    # Escala máxima que cabe SIN deformar: la menor entre ancho y alto.
+    # Así, si la página es más grande, el diseño simplemente queda más
+    # chico dentro de ella (nunca se recorta); si es más chica, se
+    # reduce para que quepa completo.
+    escala = min(area.width() / ANCHO, area.height() / ALTO)
+    ancho_dibujo = ANCHO * escala
+    alto_dibujo = ALTO * escala
+
+    # Centrado dentro del área real.
+    x = area.x() + (area.width() - ancho_dibujo) / 2
+    y = area.y() + (area.height() - alto_dibujo) / 2
+
     painter.setWindow(0, 0, ANCHO, ALTO)
-    painter.setViewport(0, 0, painter.device().width(), painter.device().height())
+    painter.setViewport(int(x), int(y), int(ancho_dibujo), int(alto_dibujo))
 
     _dibujar_contenido_etiqueta(painter, datos)
     painter.end()
@@ -641,10 +654,24 @@ def imprimir_etiqueta_frescas(
     if "pdf" in destino:
         _imprimir_con_driver(datos, nombre_impresora)
         return
-
-    if MODO_PRUEBA_MARCO:
+    
+    diagnostico = diagnosticar_impresora_raw(nombre_impresora)   # <-- nuevo
+    imprimir_log_diagnostico_raw(diagnostico)    
+    
+    if PRUEBA_ZPL == "A":
         zpl = zpl_regla_prueba(ANCHO_DOTS, ALTO_DOTS, MEDIO_ZEBRA)
+    
+    elif PRUEBA_ZPL == "B":
+        zpl = zpl_marco_prueba(ANCHO_DOTS, ALTO_DOTS, MEDIO_ZEBRA,
+                               desplaz_x=0, desplaz_y=0)
+    elif PRUEBA_ZPL == "C":
+        zpl = imagen_a_zpl(
+            _renderizar_para_zebra(datos), MEDIO_ZEBRA,
+            desplaz_x=DESPLAZ_X, desplaz_y=DESPLAZ_Y,
+        )
+        img = _renderizar_para_zebra(datos)
+        img.save("debug_etiqueta.png")
     else:
-        zpl = imagen_a_zpl(_renderizar_para_zebra(datos), MEDIO_ZEBRA)
+        raise ValueError("PRUEBA_ZPL debe ser 'A', 'B' o 'C'")
 
     enviar_zpl(nombre_impresora, zpl)
