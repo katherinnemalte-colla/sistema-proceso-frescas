@@ -24,6 +24,8 @@ from PySide6.QtPrintSupport import QPrinterInfo
 from PySide6.QtWidgets import QComboBox
 from services.hstrco_psje_service import registrar_historico_pesaje
 from repositories.hstrco_psje_repository import  guardar_historico_pesaje,obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, marcar_historico_reimpreso
+from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton
+from ui.dialogo_ajuste_etiqueta import DialogoAjusteEtiqueta
 
 ANCHO_CONTENIDO = 1150  # valor BASE, se escala con escalar() al usarlo
 COLOR_PRIMARIO = "#1a6b6b"
@@ -726,12 +728,27 @@ class FichaTecnica(QWidget):
 
         self.impresora_seleccionada = self.combo_impresora.currentText()
         self.combo_impresora.currentTextChanged.connect(self._on_impresora_cambiada)
-
+        self.btn_ajustar_etiqueta = QPushButton("Ajustar etiqueta…")
+        self.btn_ajustar_etiqueta.clicked.connect(self._abrir_ajuste_etiqueta)
         layout.addWidget(self.combo_impresora)
-
+        layout.addWidget(self.btn_ajustar_etiqueta)
         layout.addStretch()
         return marco
 
+    def _abrir_ajuste_etiqueta(self):
+        nombre = self.combo_impresora.currentText().strip()
+        if not nombre:
+            QMessageBox.warning(self, "Ajuste de etiqueta", "Seleccione primero una impresora.")
+            return
+        try:
+            dialogo = DialogoAjusteEtiqueta(nombre, parent=self)
+            guardado = dialogo.exec() == QDialog.DialogCode.Accepted
+        except Exception:
+            logger.exception("No se pudo abrir la ventana de ajuste")
+            QMessageBox.critical(self, "Ajuste de etiqueta", "No se pudo abrir la ventana de ajuste.")
+            return
+        if guardado:
+            pass  # aquí refrescas tu vista previa si lo necesitas
     def _on_impresora_cambiada(self, nombre_impresora: str) -> None:
         self.impresora_seleccionada = nombre_impresora
 

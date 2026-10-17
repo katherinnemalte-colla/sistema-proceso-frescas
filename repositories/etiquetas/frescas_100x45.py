@@ -1,9 +1,12 @@
 """
 Etiqueta de frescas: 100 mm de ancho fijo y alto variable de 30 a 50 mm.
 
-El ALTO ya no es una constante global: se pasa como parámetro (alto_mm) a
-las funciones que dibujan o imprimen. Si no se indica, se usa ALTO_MM.
-El diseño (QR, letras, filas) se adapta solo al alto recibido.
+- El ALTO se pasa como parámetro (alto_mm) o sale del perfil de la impresora.
+- Cada impresora puede tener un PERFIL (perfil_impresora.py) con lo que se
+  corta en cada borde. El contenido se reduce y se centra dentro de la zona
+  que sí sale. No se cambia nada de la configuración de la impresora.
+- Si una impresora todavía no tiene perfil, se usan DESPLAZ_X y DESPLAZ_Y
+  como hasta ahora. Al guardar el primer perfil dejan de usarse.
 
 Logs: este módulo solo usa logging.getLogger(__name__). La configuración
 (archivo, formato, nivel) se hace UNA vez en main.py; aquí nunca se llama
@@ -13,8 +16,8 @@ a logging.basicConfig().
 import logging
 import os
 import socket
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, replace
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -55,6 +58,17 @@ from .motor_impresion import (
     diagnosticar_impresora_raw,
     imprimir_log_diagnostico_raw,
 )
+from ui.perfil_impresora import (
+    ALTO_MM_DEFECTO,
+    ALTO_MM_MAX,
+    ALTO_MM_MIN,
+    ANCHO_MM,
+    DOTS_POR_MM,
+    PerfilImpresora,
+    cargar_perfil,
+    detectar_dpi,
+    dpi_es_esperado,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,20 +77,13 @@ logger = logging.getLogger(__name__)
 # CONFIGURACIÓN GENERAL
 # ======================================================================
 
-# Tamaño físico de la etiqueta.
-# El ANCHO es siempre 100 mm. El ALTO puede ir de ALTO_MM_MIN a ALTO_MM_MAX:
-# esos dos límites NO se tocan. ALTO_MM es solo el valor por defecto para
-# cuando no se pasa un alto (por ejemplo, impresoras sin perfil).
-ANCHO_MM = 100
-ALTO_MM_MIN = 30
-ALTO_MM_MAX = 50
-ALTO_MM = 45
+# El ANCHO (100 mm), el rango del ALTO (30 a 50 mm) y los puntos por mm
+# están en perfil_impresora.py. ALTO_MM es solo el valor por defecto.
+ALTO_MM = ALTO_MM_DEFECTO
 
 MODO_PRUEBA_MARCO = False
 PRUEBA_ZPL = "C"   # "A", "B" o "C"
 
-# Resolución de la Zebra ZD230: 203 DPI ≈ 8 puntos por mm.
-DOTS_POR_MM = 8
 ANCHO_DOTS = ANCHO_MM * DOTS_POR_MM   # 800 (el alto en puntos se calcula aparte)
 
 # Tipo de sensor de la Zebra: "Y" = etiquetas con separación (gap),
@@ -88,16 +95,16 @@ MEDIO_ZEBRA = "N"
 ANCHO = ANCHO_MM * 10
 
 # Margen igual en los CUATRO lados, en unidades lógicas (25 = 2,5 mm).
-# Las térmicas tienen ~1 mm de tolerancia entre etiqueta y etiqueta.
-# Súbelo si todavía se corta; bájalo si necesitas más espacio.
-MARGEN = 20
+MARGEN = 0
 
 QR_SIZE = 170             # tamaño MÁXIMO del QR (se achica en etiquetas bajas)
-SEPARACION_QR = 5
+SEPARACION_QR = 7
 SEPARACION_BLOQUES = 10   # espacio entre el texto superior y la franja inferior
 GROSOR_LINEA = 5
-DESPLAZ_X = -15
-DESPLAZ_Y = -23
+
+# Solo se usan si la impresora NO tiene perfil guardado (compatibilidad).
+DESPLAZ_X = -10
+DESPLAZ_Y = -25
 
 # ---- Adaptación al alto ----
 QR_MIN = 110              # el QR no baja de 11 mm (si no, se lee mal)
@@ -109,7 +116,7 @@ ESCALA_MIN_AVISO = 0.5
 
 # Dibuja un marco en el borde de la etiqueta (vista previa e impresión).
 # Útil para comprobar qué borde se corta; dejar en False en producción.
-MARCO_DE_PRUEBA = True
+MARCO_DE_PRUEBA = False
 
 # Guarda debug_etiqueta.png y ultimo_envio.zpl en la carpeta de logs cada
 # vez que se imprime por ZPL. Útil para probar; poner False en producción.
@@ -139,8 +146,6 @@ def normalizar_alto_mm(alto_mm=None) -> int:
     - None            -> ALTO_MM (valor por defecto)
     - no es número    -> ALTO_MM y se avisa en el log
     - fuera de rango  -> se ajusta al límite más cercano y se avisa
-
-    Sirve también para la pantalla de configuración (validar lo escrito).
     """
     if alto_mm is None:
         alto_mm = ALTO_MM
@@ -406,6 +411,51 @@ def construir_datos_etiqueta(
         marca=crear_etiqueta_marca(),
         categoria=categoria,
         codigo=construir_codigo(nombre_usuario, numero_ticket),
+
+        qr_izquierda=contenido_qr,
+        qr_derecha=contenido_qr,
+    )
+
+
+def crear_datos_ejemplo() -> DatosEtiquetaFrescas:
+    """
+    Datos FIJOS para la ventana de ajuste y las impresiones de prueba.
+    No usa base de datos, báscula ni consecutivos: se puede llamar las
+    veces que se quiera sin gastar números de etiqueta.
+    """
+    hoy = date.today()
+    vencimiento = hoy + timedelta(days=7)
+    contenido_qr = _generar_contenido_qr(
+        lote="0001234", nivel_limpieza=1, cdgo_plu="1234", piezas=1,
+        fecha_vencimiento_str=vencimiento, peso_neto_kg=1.0,
+    )
+    return DatosEtiquetaFrescas(
+        cdgo_plu="1234",
+        nom_prog="PRODUCTO DE PRUEBA",
+        descripcion="1234-PRODUCTO DE PRUEBA",
+        lote="0001234",
+        nivel_limpieza=1,
+        peso_neto_kg=1.0,
+
+        fecha_fabricacion=hoy,
+        fecha_sacrificio=_formatear_fecha(hoy),
+        nom_impr_etiq="PRUEBA",
+        numEspecie=None,
+        fecha_vencimiento_str=vencimiento,
+
+        fabricante_nombre="EMPRESA DE EJEMPLO S.A.S. NIT 000.000.000-0",
+        fabricante_direccion="Calle de ejemplo 123 Zona Industrial",
+        fabricante_ciudad="Ciudad",
+        fabricante_telefono="0000000",
+
+        temperatura_minima_c=TEMPERATURA_MINIMA_C,
+        temperatura_maxima_c=TEMPERATURA_MAXIMA_C,
+        recomendacion_conservacion=RECOMENDACION_CONSERVACION,
+        recomendacion_uso=RECOMENDACION_USO,
+
+        marca=crear_etiqueta_marca(),
+        categoria="PRUEBA",
+        codigo="PRUEBA #000000",
 
         qr_izquierda=contenido_qr,
         qr_derecha=contenido_qr,
@@ -682,7 +732,7 @@ def generar_vista_previa_pixmap(
     Genera una imagen con el MISMO diseño que se imprime,
     para mostrarla en la interfaz.
 
-    No toca la impresora física.
+    No toca la impresora física ni el perfil de la impresora.
     """
     alto_mm, alto, _ = medidas_alto(alto_mm)
     logger.debug("Vista previa %dx%d mm", ANCHO_MM, alto_mm)
@@ -704,13 +754,27 @@ def generar_vista_previa_pixmap(
 # IMPRESIÓN (ZPL RAW directo a la Zebra)
 # ======================================================================
 
-def _renderizar_para_zebra(datos: DatosEtiquetaFrescas, alto_mm=None) -> QImage:
+def renderizar_para_zebra(datos: DatosEtiquetaFrescas, perfil=None) -> QImage:
     """
     Dibuja la etiqueta en una imagen de ANCHO_DOTS x alto_dots (800 x 240
     a 800 x 400), es decir, 1 píxel = 1 punto de la impresora.
+
+    perfil (PerfilImpresora): alto y bordes que se cortan. El contenido se
+    reduce y se centra dentro de la zona que sí sale. Sin perfil, ocupa
+    toda la etiqueta. Esta es la MISMA imagen que se manda a imprimir.
     """
-    alto_mm, alto, alto_dots = medidas_alto(alto_mm)
-    logger.debug("Renderizando para Zebra: %dx%d puntos", ANCHO_DOTS, alto_dots)
+    if perfil is None:
+        perfil = PerfilImpresora(alto_mm=ALTO_MM)
+    elif not isinstance(perfil, PerfilImpresora):
+        perfil = PerfilImpresora(alto_mm=perfil)   # compatibilidad: alto_mm suelto
+    perfil = perfil.validado()
+
+    alto_mm, alto, alto_dots = medidas_alto(perfil.alto_mm)
+    x, y, escala = perfil.colocacion()
+    logger.debug(
+        "Renderizando para Zebra: %dx%d puntos, origen=(%.1f,%.1f), escala=%.3f",
+        ANCHO_DOTS, alto_dots, x, y, escala,
+    )
 
     img = QImage(ANCHO_DOTS, alto_dots, QImage.Format.Format_RGB32)
     img.fill(Qt.GlobalColor.white)
@@ -719,13 +783,17 @@ def _renderizar_para_zebra(datos: DatosEtiquetaFrescas, alto_mm=None) -> QImage:
     # Sin suavizado: la impresora es solo blanco/negro, el suavizado
     # generaría grises que luego se pierden o engruesan al binarizar.
     painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, False)
-    # Coordenadas lógicas -> puntos de la impresora.
-    painter.scale(ANCHO_DOTS / ANCHO, alto_dots / alto)
+    # Zona que sí sale + coordenadas lógicas -> puntos de la impresora.
+    painter.translate(x, y)
+    painter.scale((ANCHO_DOTS / ANCHO) * escala, (alto_dots / alto) * escala)
 
     _dibujar_contenido_etiqueta(painter, datos, alto_mm)
 
     painter.end()
     return img
+
+
+_renderizar_para_zebra = renderizar_para_zebra   # nombre anterior
 
 
 def generar_pdf_etiqueta(
@@ -806,10 +874,87 @@ def _imprimir_con_driver(
     painter.end()
 
 
+# ----------------------------------------------------------------------
+# Envío a la Zebra (compartido por la impresión normal y las pruebas)
+# ----------------------------------------------------------------------
+
+def _es_destino_pdf(nombre_impresora: str) -> bool:
+    destino = nombre_impresora.lower()
+    return destino.endswith(".pdf") or "pdf" in destino
+
+
+def _advertir_dpi(nombre_impresora: str) -> None:
+    """Escribe una advertencia en el log si la impresora no es de 203 DPI."""
+    dpi = detectar_dpi(nombre_impresora)
+    if dpi is None:
+        logger.info("DPI de %r: no se pudo detectar (se asume 203)", nombre_impresora)
+    elif not dpi_es_esperado(dpi):
+        logger.warning(
+            "La impresora %r parece ser de %s DPI; el programa está calibrado "
+            "para 203 DPI y la etiqueta saldrá más pequeña",
+            nombre_impresora, dpi,
+        )
+    else:
+        logger.info("DPI de %r: %s", nombre_impresora, dpi)
+
+
+def _registrar_diagnostico_raw(nombre_impresora: str) -> None:
+    diagnostico = diagnosticar_impresora_raw(nombre_impresora)
+    imprimir_log_diagnostico_raw(diagnostico)
+
+
+def _enviar_zpl_con_log(
+    nombre_impresora: str,
+    zpl: str,
+    img: Optional[QImage] = None,
+) -> None:
+    logger.info("ZPL generado: %d caracteres", len(zpl))
+    _guardar_debug(img, zpl)
+
+    try:
+        enviar_zpl(nombre_impresora, zpl)
+    except Exception:
+        logger.exception("Falló el envío del ZPL a %r", nombre_impresora)
+        raise
+
+    logger.info("ZPL enviado a %r sin errores", nombre_impresora)
+
+
+def _enviar_imagen(
+    nombre_impresora: str,
+    img: QImage,
+    desplaz_x: int = 0,
+    desplaz_y: int = 0,
+) -> None:
+    zpl = imagen_a_zpl(
+        img, MEDIO_ZEBRA, desplaz_x=desplaz_x, desplaz_y=desplaz_y,
+    )
+    _enviar_zpl_con_log(nombre_impresora, zpl, img)
+
+
+def _resolver_perfil(nombre_impresora: str, alto_mm, perfil):
+    """
+    (perfil efectivo, sin_perfil_guardado)
+    Prioridad: perfil recibido > perfil guardado de la impresora > por
+    defecto. Un alto_mm explícito reemplaza el alto del perfil.
+    """
+    if perfil is not None:
+        efectivo, sin_perfil = perfil.validado(), False
+    else:
+        guardado = cargar_perfil(nombre_impresora)
+        sin_perfil = guardado is None
+        efectivo = guardado if guardado is not None else PerfilImpresora(alto_mm=ALTO_MM)
+
+    if alto_mm is not None:
+        efectivo = replace(efectivo, alto_mm=normalizar_alto_mm(alto_mm))
+    return efectivo, sin_perfil
+
+
 def imprimir_etiqueta_frescas(
     datos: DatosEtiquetaFrescas,
     nombre_impresora: str,
     alto_mm=None,
+    perfil=None,
 ) -> None:
     """
     Decide cómo imprimir según el destino:
@@ -817,33 +962,34 @@ def imprimir_etiqueta_frescas(
       - impresora virtual con 'pdf'     -> driver de Windows (QPrinter)
       - cualquier otra (Godex/Zebra)    -> ZPL RAW
 
-    alto_mm es opcional (30 a 50). Si no se indica, se usa ALTO_MM, así el
-    código que ya llamaba con dos argumentos sigue funcionando.
+    alto_mm y perfil son opcionales. Sin ellos se usa el perfil guardado de
+    la impresora (o, si no tiene, ALTO_MM y DESPLAZ_X/Y), así el código que
+    ya llamaba con dos argumentos sigue funcionando.
     """
-    alto_mm, _, alto_dots = medidas_alto(alto_mm)
-    destino = nombre_impresora.lower()
+    perfil, sin_perfil = _resolver_perfil(nombre_impresora, alto_mm, perfil)
+    alto_mm, _, alto_dots = medidas_alto(perfil.alto_mm)
 
     logger.info(
-        "IMPRIMIR impresora=%r etiqueta=%dx%d mm (%dx%d puntos)",
+        "IMPRIMIR impresora=%r etiqueta=%dx%d mm (%dx%d puntos) %s",
         nombre_impresora, ANCHO_MM, alto_mm, ANCHO_DOTS, alto_dots,
+        "SIN perfil guardado" if sin_perfil else perfil,
     )
 
-    if destino.endswith(".pdf"):
+    if nombre_impresora.lower().endswith(".pdf"):
         generar_pdf_etiqueta(datos, nombre_impresora, alto_mm)
         return
 
-    if "pdf" in destino:
+    if "pdf" in nombre_impresora.lower():
         logger.info("Destino: driver de Windows (QPrinter)")
         _imprimir_con_driver(datos, nombre_impresora, alto_mm)
         return
 
     logger.info(
-        "Destino: ZPL RAW | prueba=%s medio=%s desplaz=(%s,%s)",
-        PRUEBA_ZPL, MEDIO_ZEBRA, DESPLAZ_X, DESPLAZ_Y,
+        "Destino: ZPL RAW | prueba=%s medio=%s", PRUEBA_ZPL, MEDIO_ZEBRA,
     )
 
-    diagnostico = diagnosticar_impresora_raw(nombre_impresora)
-    imprimir_log_diagnostico_raw(diagnostico)
+    _advertir_dpi(nombre_impresora)
+    _registrar_diagnostico_raw(nombre_impresora)
 
     img = None
     if PRUEBA_ZPL == "A":
@@ -855,22 +1001,130 @@ def imprimir_etiqueta_frescas(
         )
 
     elif PRUEBA_ZPL == "C":
-        img = _renderizar_para_zebra(datos, alto_mm)   # se renderiza UNA vez
+        img = renderizar_para_zebra(datos, perfil)   # se renderiza UNA vez
+        # Con perfil, el ajuste ya está aplicado dentro de la imagen.
+        desplaz_x, desplaz_y = (DESPLAZ_X, DESPLAZ_Y) if sin_perfil else (0, 0)
+        logger.info("Desplazamiento heredado: (%s,%s)", desplaz_x, desplaz_y)
         zpl = imagen_a_zpl(
-            img, MEDIO_ZEBRA,
-            desplaz_x=DESPLAZ_X, desplaz_y=DESPLAZ_Y,
+            img, MEDIO_ZEBRA, desplaz_x=desplaz_x, desplaz_y=desplaz_y,
         )
 
     else:
         raise ValueError("PRUEBA_ZPL debe ser 'A', 'B' o 'C'")
 
-    logger.info("ZPL generado: %d caracteres", len(zpl))
-    _guardar_debug(img, zpl)
+    _enviar_zpl_con_log(nombre_impresora, zpl, img)
 
-    try:
-        enviar_zpl(nombre_impresora, zpl)
-    except Exception:
-        logger.exception("Falló el envío del ZPL a %r", nombre_impresora)
-        raise
 
-    logger.info("ZPL enviado a %r sin errores", nombre_impresora)
+# ======================================================================
+# PRUEBAS DE IMPRESIÓN (no tocan consecutivos, base de datos ni báscula)
+# ======================================================================
+
+def _renderizar_reglas(alto_mm=None) -> QImage:
+    """
+    Etiqueta de prueba para MEDIR qué se corta en cada borde: marco pegado
+    al borde y, en cada lado, una regla que cuenta hacia adentro (mm).
+    Se imprime completa, sin aplicar ningún perfil.
+    """
+    alto_mm, _, alto_dots = medidas_alto(alto_mm)
+    w, h = ANCHO_DOTS, alto_dots
+
+    img = QImage(w, h, QImage.Format.Format_RGB32)
+    img.fill(Qt.GlobalColor.white)
+
+    p = QPainter(img)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing, False)
+    negro = Qt.GlobalColor.black
+
+    paso = DOTS_POR_MM          # una marca por mm
+    alcance = 10                # mm que cubre cada regla
+    cx, cy = w // 2, h // 2
+
+    # Marco pegado al borde: si un lado del marco no se ve, ese lado se corta.
+    p.setPen(QPen(negro, 2))
+    p.drawRect(1, 1, w - 2, h - 2)
+
+    p.setPen(QPen(negro, 1))
+    fuente = QFont("Arial")
+    fuente.setPixelSize(12)
+    p.setFont(fuente)
+
+    # Líneas base de las cuatro reglas.
+    p.drawLine(0, cy, alcance * paso, cy)                   # izquierda
+    p.drawLine(w - alcance * paso, cy, w, cy)               # derecha
+    p.drawLine(cx, 0, cx, alcance * paso)                   # arriba
+    p.drawLine(cx, h - alcance * paso, cx, h)               # abajo
+
+    centro_h = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+    izq_v = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+
+    for mm in range(alcance + 1):
+        d = mm * paso
+        largo = 16 if mm % 2 == 0 else 8
+        p.drawLine(d, cy - largo, d, cy)                    # izquierda
+        p.drawLine(w - d, cy - largo, w - d, cy)            # derecha
+        p.drawLine(cx, d, cx + largo, d)                    # arriba
+        p.drawLine(cx, h - d, cx + largo, h - d)            # abajo
+
+        if mm and mm % 2 == 0:                              # número cada 2 mm
+            p.drawText(QRectF(d - 12, cy + 3, 24, 14), centro_h, str(mm))
+            p.drawText(QRectF(w - d - 12, cy + 3, 24, 14), centro_h, str(mm))
+            p.drawText(QRectF(cx + largo + 3, d - 7, 24, 14), izq_v, str(mm))
+            p.drawText(QRectF(cx + largo + 3, h - d - 7, 24, 14), izq_v, str(mm))
+
+    # Instrucciones en el centro.
+    centro = Qt.AlignmentFlag.AlignCenter
+    titulo = QFont("Arial")
+    titulo.setPixelSize(18)
+    titulo.setBold(True)
+    p.setFont(titulo)
+    p.drawText(QRectF(100, cy - 30, w - 200, 24), centro,
+               f"PRUEBA DE BORDES  {ANCHO_MM} x {alto_mm} mm")
+    fuente.setPixelSize(14)
+    p.setFont(fuente)
+    p.drawText(QRectF(100, cy, w - 200, 20), centro,
+               "Anote el primer número visible en cada borde")
+
+    p.end()
+    return img
+
+
+def imprimir_prueba_reglas(nombre_impresora: str, alto_mm=None) -> None:
+    """
+    Imprime la etiqueta de bordes (marco + reglas) para medir qué se corta.
+    Solo para impresoras de etiquetas (ZPL); lanza ValueError con un
+    mensaje claro si el destino es un PDF.
+    """
+    if _es_destino_pdf(nombre_impresora):
+        raise ValueError(
+            "La prueba de bordes solo se imprime en impresoras de etiquetas, "
+            "no en una impresora o archivo PDF."
+        )
+
+    alto_mm, _, alto_dots = medidas_alto(alto_mm)
+    logger.info(
+        "PRUEBA DE BORDES impresora=%r etiqueta=%dx%d mm",
+        nombre_impresora, ANCHO_MM, alto_mm,
+    )
+    _advertir_dpi(nombre_impresora)
+    _registrar_diagnostico_raw(nombre_impresora)
+    _enviar_imagen(nombre_impresora, _renderizar_reglas(alto_mm))
+
+
+def imprimir_prueba_etiqueta(nombre_impresora: str, perfil) -> None:
+    """
+    Imprime una etiqueta de EJEMPLO con el perfil indicado (aunque todavía
+    no esté guardado), para comprobar que no se corta. No consume
+    consecutivos ni lee la báscula.
+    """
+    perfil = perfil.validado()
+    logger.info("PRUEBA DE ETIQUETA impresora=%r %s", nombre_impresora, perfil)
+    datos = crear_datos_ejemplo()
+
+    if _es_destino_pdf(nombre_impresora):
+        imprimir_etiqueta_frescas(datos, nombre_impresora, perfil=perfil)
+        return
+
+    _advertir_dpi(nombre_impresora)
+    _registrar_diagnostico_raw(nombre_impresora)
+    _enviar_imagen(nombre_impresora, renderizar_para_zebra(datos, perfil))
