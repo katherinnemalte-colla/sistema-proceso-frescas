@@ -1,13 +1,34 @@
+"""
+Etiqueta de frescas: 100 mm de ancho fijo y alto variable de 30 a 50 mm.
+
+El ALTO ya no es una constante global: se pasa como parámetro (alto_mm) a
+las funciones que dibujan o imprimen. Si no se indica, se usa ALTO_MM.
+El diseño (QR, letras, filas) se adapta solo al alto recibido.
+
+Logs: este módulo solo usa logging.getLogger(__name__). La configuración
+(archivo, formato, nivel) se hace UNA vez en main.py; aquí nunca se llama
+a logging.basicConfig().
+"""
+
+import logging
 import os
 import socket
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QFont, QImage, QPainter, QPen, QPixmap
-from PySide6.QtCore import QMarginsF, QSizeF
-from PySide6.QtGui import QImage, QPageLayout, QPageSize, QPainter, QPdfWriter
+from PySide6.QtCore import QMarginsF, QRectF, QSizeF, Qt
+from PySide6.QtGui import (
+    QFont,
+    QImage,
+    QPageLayout,
+    QPageSize,
+    QPainter,
+    QPdfWriter,
+    QPen,
+    QPixmap,
+)
 from repositories.empresa_repository import (
     obtener_ciudad_empresa_db,
     obtener_fabricado_empresa_db,
@@ -21,7 +42,21 @@ from repositories.consecutivo_repository import (
 from services.bascula_service import bascula_service
 from utils import fechas
 from utils.rutas import ruta_recurso
-from .motor_impresion import crear_impresora, crear_painter,dibujar_qr, enviar_zpl, imagen_a_zpl,zpl_marco_prueba,zpl_regla_prueba,diagnosticar_impresora, imprimir_log_diagnostico,diagnosticar_impresora_raw,imprimir_log_diagnostico_raw
+from .motor_impresion import (
+    crear_impresora,
+    crear_painter,
+    dibujar_qr,
+    enviar_zpl,
+    imagen_a_zpl,
+    zpl_marco_prueba,
+    zpl_regla_prueba,
+    diagnosticar_impresora,
+    imprimir_log_diagnostico,
+    diagnosticar_impresora_raw,
+    imprimir_log_diagnostico_raw,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # ======================================================================
@@ -29,42 +64,56 @@ from .motor_impresion import crear_impresora, crear_painter,dibujar_qr, enviar_z
 # ======================================================================
 
 # Tamaño físico de la etiqueta.
+# El ANCHO es siempre 100 mm. El ALTO puede ir de ALTO_MM_MIN a ALTO_MM_MAX:
+# esos dos límites NO se tocan. ALTO_MM es solo el valor por defecto para
+# cuando no se pasa un alto (por ejemplo, impresoras sin perfil).
 ANCHO_MM = 100
-ALTO_MM = 50
+ALTO_MM_MIN = 30
+ALTO_MM_MAX = 50
+ALTO_MM = 45
+
 MODO_PRUEBA_MARCO = False
 PRUEBA_ZPL = "C"   # "A", "B" o "C"
+
 # Resolución de la Zebra ZD230: 203 DPI ≈ 8 puntos por mm.
 DOTS_POR_MM = 8
-ANCHO_DOTS = ANCHO_MM * DOTS_POR_MM   # 800
-ALTO_DOTS = ALTO_MM * DOTS_POR_MM     # 360
+ANCHO_DOTS = ANCHO_MM * DOTS_POR_MM   # 800 (el alto en puntos se calcula aparte)
 
 # Tipo de sensor de la Zebra: "Y" = etiquetas con separación (gap),
 # "M" = marca negra, "N" = continuo.
 MEDIO_ZEBRA = "N"
 
-# Coordenadas lógicas de dibujo: 1 unidad = 0,1 mm (1000 x 450 = 100 x 45 mm).
+# Coordenadas lógicas de dibujo: 1 unidad = 0,1 mm.
+# El ancho es fijo (1000 unidades); el alto = alto_mm * 10 (300 a 500).
 ANCHO = ANCHO_MM * 10
-ALTO = ALTO_MM * 10
 
-# Margen igual en los CUATRO lados, en unidades lógicas (12 = 1,2 mm).
-# Las térmicas tienen ~1 mm de tolerancia entre etiqueta y etiqueta: con un
-# margen de 0,4 mm lo que queda pegado al borde se corta a veces.
+# Margen igual en los CUATRO lados, en unidades lógicas (25 = 2,5 mm).
+# Las térmicas tienen ~1 mm de tolerancia entre etiqueta y etiqueta.
 # Súbelo si todavía se corta; bájalo si necesitas más espacio.
-MARGEN = 25
+MARGEN = 20
 
-QR_SIZE = 170
-SEPARACION_QR = 7
+QR_SIZE = 170             # tamaño MÁXIMO del QR (se achica en etiquetas bajas)
+SEPARACION_QR = 5
 SEPARACION_BLOQUES = 10   # espacio entre el texto superior y la franja inferior
 GROSOR_LINEA = 5
-DESPLAZ_X = -10
-DESPLAZ_Y = -25
-# La franja inferior (logo + categoría + código) arranca justo debajo de la
-# línea divisoria, que queda SEPARACION_BLOQUES por encima del QR.
-ALTO_BLOQUE_INFERIOR = QR_SIZE + SEPARACION_BLOQUES
+DESPLAZ_X = -15
+DESPLAZ_Y = -23
+
+# ---- Adaptación al alto ----
+QR_MIN = 110              # el QR no baja de 11 mm (si no, se lee mal)
+ALTO_REF = 450            # 45 mm: altura para la que se eligieron las letras
+# Espacio que tenían las 7 filas de texto en el diseño original (= 220).
+ALTO_TEXTO_REF = (ALTO_REF - QR_SIZE - MARGEN - SEPARACION_BLOQUES) - MARGEN
+# Si la escala de letra baja de este valor se escribe un aviso en el log.
+ESCALA_MIN_AVISO = 0.5
 
 # Dibuja un marco en el borde de la etiqueta (vista previa e impresión).
 # Útil para comprobar qué borde se corta; dejar en False en producción.
 MARCO_DE_PRUEBA = True
+
+# Guarda debug_etiqueta.png y ultimo_envio.zpl en la carpeta de logs cada
+# vez que se imprime por ZPL. Útil para probar; poner False en producción.
+GUARDAR_ARCHIVOS_DEBUG = True
 
 TEMPERATURA_MINIMA_C = 0
 TEMPERATURA_MAXIMA_C = 4
@@ -80,6 +129,78 @@ _consecutivo_repository = ConsecutivoRepository()
 
 
 # ======================================================================
+# MEDIDAS SEGÚN EL ALTO
+# ======================================================================
+
+def normalizar_alto_mm(alto_mm=None) -> int:
+    """
+    Devuelve un alto válido (entero entre ALTO_MM_MIN y ALTO_MM_MAX).
+
+    - None            -> ALTO_MM (valor por defecto)
+    - no es número    -> ALTO_MM y se avisa en el log
+    - fuera de rango  -> se ajusta al límite más cercano y se avisa
+
+    Sirve también para la pantalla de configuración (validar lo escrito).
+    """
+    if alto_mm is None:
+        alto_mm = ALTO_MM
+
+    try:
+        alto = int(round(float(alto_mm)))
+    except (TypeError, ValueError):
+        logger.warning(
+            "alto_mm=%r no es un número; se usa el valor por defecto %s mm",
+            alto_mm, ALTO_MM,
+        )
+        alto = ALTO_MM
+
+    limitado = max(ALTO_MM_MIN, min(ALTO_MM_MAX, alto))
+    if limitado != alto:
+        logger.warning(
+            "alto_mm=%s fuera del rango %s-%s mm; se usa %s mm",
+            alto, ALTO_MM_MIN, ALTO_MM_MAX, limitado,
+        )
+    return limitado
+
+
+def medidas_alto(alto_mm=None) -> tuple:
+    """
+    (alto_mm, alto en unidades lógicas, alto en puntos de impresora)
+
+    Ej.: 30 mm -> (30, 300, 240)      50 mm -> (50, 500, 400)
+    """
+    alto_mm = normalizar_alto_mm(alto_mm)
+    return alto_mm, alto_mm * 10, alto_mm * DOTS_POR_MM
+
+
+def _dir_diagnostico() -> Path:
+    """
+    Carpeta LOCAL de cada computador para archivos de depuración
+    (la misma que usa el log: ...\\AppData\\Local\\etiquetasMk\\logs).
+    """
+    base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+    carpeta = Path(base) / "etiquetasMk" / "logs"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    return carpeta
+
+
+def _guardar_debug(img: Optional[QImage], zpl: str) -> None:
+    """Guarda la imagen y el ZPL enviados. Nunca debe tumbar la impresión."""
+    if not GUARDAR_ARCHIVOS_DEBUG:
+        return
+    try:
+        carpeta = _dir_diagnostico()
+        if img is not None:
+            img.save(str(carpeta / "debug_etiqueta.png"))
+        (carpeta / "ultimo_envio.zpl").write_text(zpl, encoding="ascii")
+        logger.debug("Archivos de depuración guardados en %s", carpeta)
+    except OSError:
+        logger.warning(
+            "No se pudieron guardar los archivos de depuración", exc_info=True
+        )
+
+
+# ======================================================================
 # RECURSOS
 # ======================================================================
 
@@ -91,10 +212,14 @@ def _cargar_pixmap(nombre_archivo: str) -> Optional[QPixmap]:
     ruta = os.path.join(RUTA_ICONOS, nombre_archivo)
 
     if not os.path.isfile(ruta):
+        logger.warning("No se encontró la imagen %s", ruta)
         return None
 
     pixmap = QPixmap(ruta)
-    return None if pixmap.isNull() else pixmap
+    if pixmap.isNull():
+        logger.warning("La imagen %s está dañada o no se pudo leer", ruta)
+        return None
+    return pixmap
 
 
 def crear_etiqueta_marca() -> Optional[QPixmap]:
@@ -117,7 +242,9 @@ def siguiente_consecutivo_etiqueta_canasta() -> int:
         campo_eva="nmro_psta",
         proceso=0,
     )
-    return _consecutivo_repository.obtener_consecutivo(params)
+    consecutivo = _consecutivo_repository.obtener_consecutivo(params)
+    logger.debug("Consecutivo de etiqueta obtenido: %s", consecutivo)
+    return consecutivo
 
 
 def construir_codigo(nombre_usuario, numero_ticket=None) -> str:
@@ -125,6 +252,7 @@ def construir_codigo(nombre_usuario, numero_ticket=None) -> str:
         numero_ticket = siguiente_consecutivo_etiqueta_canasta()
 
     return f"{nombre_usuario} {CODIGO_PROCESO_DEFAULT} #{numero_ticket}"
+
 
 def _generar_contenido_qr(
     lote: str,
@@ -142,10 +270,17 @@ def _generar_contenido_qr(
     nivel_fmt = str(nivel_limpieza if nivel_limpieza is not None else 0).zfill(2)
     plu_fmt = str(cdgo_plu).zfill(4)[-4:]
 
+    # Aviso: [-7:] y [-4:] cortan en silencio si el dato es más largo.
+    if len(str(lote)) > 7:
+        logger.warning("Lote %r tiene más de 7 caracteres; el QR usa %r", lote, lote_fmt)
+    if len(str(cdgo_plu)) > 4:
+        logger.warning("PLU %r tiene más de 4 caracteres; el QR usa %r", cdgo_plu, plu_fmt)
+
     if peso_neto_kg is not None:
         # Ej.: 3.25 kg -> "03025" (el punto decimal se reemplaza por 0)
         peso_fmt = f"{round(peso_neto_kg, 2):05.2f}".replace(".", "0")
     else:
+        logger.warning("Peso None: el QR queda con peso 00000")
         peso_fmt = "0" * 5
 
     piezas_fmt = str(piezas).zfill(2)
@@ -228,6 +363,11 @@ def construir_datos_etiqueta(
         else bascula_service.obtener_ultimo_peso()
     )
 
+    logger.info(
+        "Construyendo etiqueta: plu=%s lote=%s peso=%s",
+        producto.cdgo_plu, lote, peso_neto_kg,
+    )
+
     contenido_qr = _generar_contenido_qr(
         lote=lote,
         cdgo_plu=producto.cdgo_plu,
@@ -279,56 +419,87 @@ def construir_datos_etiqueta(
 def _dibujar_contenido_etiqueta(
     painter: QPainter,
     datos: DatosEtiquetaFrescas,
+    alto_mm=None,
 ) -> None:
     """
     Dibuja la etiqueta completa (QR, textos, logo) sobre un QPainter cuyo
-    sistema de coordenadas es ANCHO x ALTO (1000 x 450, 1 unidad = 0,1 mm).
+    sistema de coordenadas es ANCHO x alto (1 unidad = 0,1 mm).
+    El diseño se adapta al alto: en etiquetas bajas el QR y las letras se
+    achican; nunca crecen más que en el diseño original de 45 mm.
     """
+    alto_mm, alto, _ = medidas_alto(alto_mm)
 
-    # ---------------- Medidas derivadas ----------------
+    # ---------------- Medidas derivadas (se adaptan al alto) ----------------
+    # El QR se achica en etiquetas bajas (nunca por debajo de QR_MIN).
+    qr_size = max(QR_MIN, min(QR_SIZE, round(QR_SIZE * alto / ALTO_REF)))
+    alto_bloque_inferior = qr_size + SEPARACION_BLOQUES
+
     x_full = MARGEN
     ancho_full = ANCHO - (MARGEN * 2)
 
     # Zona central (entre los dos QR) para logo / categoría / código.
-    x_entre_qr = MARGEN + QR_SIZE + SEPARACION_QR
+    x_entre_qr = MARGEN + qr_size + SEPARACION_QR
     ancho_entre_qr = ANCHO - (2 * x_entre_qr)
 
     # El QR respeta el mismo MARGEN que los demás lados.
-    qr_y = ALTO - QR_SIZE - MARGEN
+    qr_y = alto - qr_size - MARGEN
+
+    # El alto disponible entre el margen superior y la franja del QR se
+    # reparte proporcionalmente entre las filas (según sus "pesos").
+    pesos_filas = [42, 36, 40, 29, 30, 27, 32]
+    alto_disponible = (qr_y - SEPARACION_BLOQUES) - MARGEN
+    factor = alto_disponible / sum(pesos_filas)
+    saltos = [round(peso * factor) for peso in pesos_filas]
+
+    # Escala de letra y cajas: 1.0 con 45 mm o más; menor en etiquetas bajas.
+    esc = min(1.0, alto_disponible / ALTO_TEXTO_REF)
+
+    logger.debug(
+        "Dibujo %dx%d mm: qr=%d alto_texto=%d escala_letra=%.2f",
+        ANCHO_MM, alto_mm, qr_size, alto_disponible, esc,
+    )
+    if esc < ESCALA_MIN_AVISO:
+        logger.warning(
+            "Letra muy pequeña (escala %.2f) para %d mm de alto; "
+            "revisa MARGEN y QR_SIZE", esc, alto_mm,
+        )
 
     # ---------------- Funciones auxiliares ----------------
 
     def fuente(tamano: int, negrita: bool = False) -> QFont:
         font = QFont("Arial")
         font.setWeight(QFont.Weight.Bold if negrita else QFont.Weight.Normal)
-        font.setPixelSize(tamano)
+        font.setPixelSize(max(1, round(tamano * esc)))
         return font
 
     def texto(
-        x, y, ancho, alto, contenido,
+        x, y, ancho, alto_caja, contenido,
         tamano=20,
         negrita=False,
         alineacion=Qt.AlignmentFlag.AlignLeft,
     ):
+        # tamano y alto_caja son valores de DISEÑO: aquí se escalan.
         painter.setFont(fuente(tamano, negrita))
-        painter.drawText(QRectF(x, y, ancho, alto), alineacion, str(contenido))
+        painter.drawText(
+            QRectF(x, y, ancho, alto_caja * esc), alineacion, str(contenido)
+        )
 
     def fila_dos_columnas(
-        y, alto, izquierda, derecha,
+        y, alto_fila, izquierda, derecha,
         tamano=27,
         negrita_der=False,
         prop_izq=0.5,
     ):
         ancho_izq = ancho_full * prop_izq
-        texto(x_full, y, ancho_izq, alto, izquierda, tamano=tamano)
+        texto(x_full, y, ancho_izq, alto_fila, izquierda, tamano=tamano)
         texto(
-            x_full + ancho_izq, y, ancho_full - ancho_izq, alto, derecha,
+            x_full + ancho_izq, y, ancho_full - ancho_izq, alto_fila, derecha,
             tamano=tamano,
             negrita=negrita_der,
             alineacion=Qt.AlignmentFlag.AlignRight,
         )
 
-    def fila_tres_columnas(y, alto, izquierda, centro, derecha, tamano=24):
+    def fila_tres_columnas(y, alto_fila, izquierda, centro, derecha, tamano=24):
         """Tres textos en una fila: izquierda | centro | derecha."""
         ancho_col = ancho_full / 3
         alineaciones = (
@@ -340,12 +511,12 @@ def _dibujar_contenido_etiqueta(
             zip((izquierda, centro, derecha), alineaciones)
         ):
             texto(
-                x_full + ancho_col * i, y, ancho_col, alto, contenido,
+                x_full + ancho_col * i, y, ancho_col, alto_fila, contenido,
                 tamano=tamano,
                 alineacion=alineacion,
             )
 
-    def dibujar_logo_centrado(pixmap: Optional[QPixmap], x, y, ancho, alto):
+    def dibujar_logo_centrado(pixmap: Optional[QPixmap], x, y, ancho, alto_area):
         """
         Dibuja el logo conservando su proporción, centrado en el área dada.
         Se dibuja desde la imagen ORIGINAL (no pre-escalada) para evitar
@@ -355,11 +526,11 @@ def _dibujar_contenido_etiqueta(
             return
 
         tam = pixmap.size().scaled(
-            int(ancho), int(alto), Qt.AspectRatioMode.KeepAspectRatio
+            int(ancho), int(alto_area), Qt.AspectRatioMode.KeepAspectRatio
         )
         destino = QRectF(
             x + (ancho - tam.width()) / 2,
-            y + (alto - tam.height()) / 2,
+            y + (alto_area - tam.height()) / 2,
             tam.width(),
             tam.height(),
         )
@@ -374,25 +545,16 @@ def _dibujar_contenido_etiqueta(
     if datos.qr_izquierda:
         dibujar_qr(
             painter, datos.qr_izquierda,
-            QRectF(MARGEN, qr_y, QR_SIZE, QR_SIZE),
+            QRectF(MARGEN, qr_y, qr_size, qr_size),
         )
 
     if datos.qr_derecha:
         dibujar_qr(
             painter, datos.qr_derecha,
-            QRectF(ANCHO - MARGEN - QR_SIZE, qr_y, QR_SIZE, QR_SIZE),
+            QRectF(ANCHO - MARGEN - qr_size, qr_y, qr_size, qr_size),
         )
 
     # ---------------- Parte superior (textos) ----------------
-    # El alto disponible entre el margen superior y la franja del QR se
-    # reparte proporcionalmente entre las filas (según sus "pesos"). Así,
-    # si cambia ALTO, MARGEN o QR_SIZE, el texto se adapta solo y nunca
-    # se monta sobre el QR.
-
-    pesos_filas = [42, 36, 40, 29, 30, 27, 32]
-    alto_disponible = (qr_y - SEPARACION_BLOQUES) - MARGEN
-    factor = alto_disponible / sum(pesos_filas)
-    saltos = [round(peso * factor) for peso in pesos_filas]
 
     y = MARGEN
 
@@ -462,7 +624,7 @@ def _dibujar_contenido_etiqueta(
 
     # ---------------- Línea divisoria ----------------
 
-    painter.setPen(QPen(Qt.GlobalColor.black, GROSOR_LINEA))
+    painter.setPen(QPen(Qt.GlobalColor.black, max(2, GROSOR_LINEA * esc)))
     painter.drawLine(
         int(x_full), int(y), int(x_full + ancho_full), int(y)
     )
@@ -472,14 +634,18 @@ def _dibujar_contenido_etiqueta(
     # Ocupa la franja entre los dos QR: empieza en la línea divisoria y
     # termina en el margen inferior.
 
-    alto_categoria = 30
+    alto_categoria = 30     # valores de diseño: texto() los escala
     alto_codigo = 22
     espacio = 2
 
-    alto_logo = ALTO_BLOQUE_INFERIOR - alto_categoria - alto_codigo - (espacio * 2)
-    y_logo = ALTO - MARGEN - ALTO_BLOQUE_INFERIOR
+    alto_logo = (
+        alto_bloque_inferior
+        - (alto_categoria + alto_codigo) * esc
+        - (espacio * 2)
+    )
+    y_logo = alto - MARGEN - alto_bloque_inferior
     y_categoria = y_logo + alto_logo + espacio
-    y_codigo = y_categoria + alto_categoria + espacio
+    y_codigo = y_categoria + alto_categoria * esc + espacio
 
     dibujar_logo_centrado(datos.marca, x_entre_qr, y_logo, ancho_entre_qr, alto_logo)
 
@@ -501,7 +667,7 @@ def _dibujar_contenido_etiqueta(
 
     if MARCO_DE_PRUEBA:
         painter.setPen(QPen(Qt.GlobalColor.black, 4))
-        painter.drawRect(0, 0, ANCHO - 1, ALTO - 1)
+        painter.drawRect(0, 0, ANCHO - 1, alto - 1)
 
 
 # ======================================================================
@@ -510,6 +676,7 @@ def _dibujar_contenido_etiqueta(
 
 def generar_vista_previa_pixmap(
     datos: DatosEtiquetaFrescas,
+    alto_mm=None,
 ) -> QPixmap:
     """
     Genera una imagen con el MISMO diseño que se imprime,
@@ -517,33 +684,19 @@ def generar_vista_previa_pixmap(
 
     No toca la impresora física.
     """
+    alto_mm, alto, _ = medidas_alto(alto_mm)
+    logger.debug("Vista previa %dx%d mm", ANCHO_MM, alto_mm)
 
-    pixmap = QPixmap(
-        ANCHO,
-        ALTO,
-    )
-
-    pixmap.fill(
-        Qt.GlobalColor.white
-    )
+    pixmap = QPixmap(ANCHO, alto)
+    pixmap.fill(Qt.GlobalColor.white)
 
     painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-    painter.setRenderHint(
-        QPainter.RenderHint.Antialiasing
-    )
-
-    painter.setRenderHint(
-        QPainter.RenderHint.TextAntialiasing
-    )
-
-    _dibujar_contenido_etiqueta(
-        painter,
-        datos,
-    )
+    _dibujar_contenido_etiqueta(painter, datos, alto_mm)
 
     painter.end()
-
     return pixmap
 
 
@@ -551,36 +704,46 @@ def generar_vista_previa_pixmap(
 # IMPRESIÓN (ZPL RAW directo a la Zebra)
 # ======================================================================
 
-def _renderizar_para_zebra(datos: DatosEtiquetaFrescas) -> QImage:
+def _renderizar_para_zebra(datos: DatosEtiquetaFrescas, alto_mm=None) -> QImage:
     """
-    Dibuja la etiqueta en una imagen de ANCHO_DOTS x ALTO_DOTS (800 x 360),
-    es decir, 1 píxel = 1 punto de la impresora.
+    Dibuja la etiqueta en una imagen de ANCHO_DOTS x alto_dots (800 x 240
+    a 800 x 400), es decir, 1 píxel = 1 punto de la impresora.
     """
-    img = QImage(ANCHO_DOTS, ALTO_DOTS, QImage.Format.Format_RGB32)
+    alto_mm, alto, alto_dots = medidas_alto(alto_mm)
+    logger.debug("Renderizando para Zebra: %dx%d puntos", ANCHO_DOTS, alto_dots)
+
+    img = QImage(ANCHO_DOTS, alto_dots, QImage.Format.Format_RGB32)
     img.fill(Qt.GlobalColor.white)
 
     painter = QPainter(img)
     # Sin suavizado: la impresora es solo blanco/negro, el suavizado
     # generaría grises que luego se pierden o engruesan al binarizar.
     painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, False)
-    # Coordenadas lógicas (1000x450) -> puntos de la impresora (800x360).
-    painter.scale(ANCHO_DOTS / ANCHO, ALTO_DOTS / ALTO)
+    # Coordenadas lógicas -> puntos de la impresora.
+    painter.scale(ANCHO_DOTS / ANCHO, alto_dots / alto)
 
-    _dibujar_contenido_etiqueta(painter, datos)
+    _dibujar_contenido_etiqueta(painter, datos, alto_mm)
 
     painter.end()
     return img
 
 
-def generar_pdf_etiqueta(datos: DatosEtiquetaFrescas, ruta_pdf: str) -> None:
+def generar_pdf_etiqueta(
+    datos: DatosEtiquetaFrescas,
+    ruta_pdf: str,
+    alto_mm=None,
+) -> None:
     """
-    Genera un PDF de 100 x 45 mm con el MISMO diseño de la etiqueta.
+    Genera un PDF de 100 mm x alto_mm con el MISMO diseño de la etiqueta.
     No usa impresora ni driver: escribe el archivo directamente.
     """
+    alto_mm, alto, _ = medidas_alto(alto_mm)
+    logger.info("Generando PDF %dx%d mm en %s", ANCHO_MM, alto_mm, ruta_pdf)
+
     writer = QPdfWriter(ruta_pdf)
     writer.setResolution(300)
     writer.setPageSize(
-        QPageSize(QSizeF(ANCHO_MM, ALTO_MM), QPageSize.Unit.Millimeter)
+        QPageSize(QSizeF(ANCHO_MM, alto_mm), QPageSize.Unit.Millimeter)
     )
     writer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Millimeter)
 
@@ -588,25 +751,31 @@ def generar_pdf_etiqueta(datos: DatosEtiquetaFrescas, ruta_pdf: str) -> None:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-    # Coordenadas lógicas (1000x450) -> toda la página del PDF.
-    painter.setWindow(0, 0, ANCHO, ALTO)
+    # Coordenadas lógicas -> toda la página del PDF.
+    painter.setWindow(0, 0, ANCHO, alto)
     painter.setViewport(0, 0, writer.width(), writer.height())
 
-    _dibujar_contenido_etiqueta(painter, datos)
+    _dibujar_contenido_etiqueta(painter, datos, alto_mm)
     painter.end()
 
 
-def _imprimir_con_driver(datos: DatosEtiquetaFrescas, nombre_impresora: str) -> None:
+def _imprimir_con_driver(
+    datos: DatosEtiquetaFrescas,
+    nombre_impresora: str,
+    alto_mm=None,
+) -> None:
     """
     Camino por driver de Windows (QPrinter). Se adapta a cualquier tamaño
     de página que el driver reporte (muchos ignoran el tamaño personalizado
     y usan el más parecido de su catálogo), sin deformar ni recortar el
     diseño: se escala manteniendo la proporción y se centra.
     """
-    diagnostico = diagnosticar_impresora(nombre_impresora, ANCHO_MM, ALTO_MM)
+    alto_mm, alto, _ = medidas_alto(alto_mm)
+
+    diagnostico = diagnosticar_impresora(nombre_impresora, ANCHO_MM, alto_mm)
     imprimir_log_diagnostico(diagnostico)
 
-    impresora = crear_impresora(nombre_impresora, ANCHO_MM, ALTO_MM, margen_mm=0)
+    impresora = crear_impresora(nombre_impresora, ANCHO_MM, alto_mm, margen_mm=0)
     painter = crear_painter(impresora)
 
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -617,61 +786,91 @@ def _imprimir_con_driver(datos: DatosEtiquetaFrescas, nombre_impresora: str) -> 
     area = layout.paintRectPixels(impresora.resolution())
 
     # Escala máxima que cabe SIN deformar: la menor entre ancho y alto.
-    # Así, si la página es más grande, el diseño simplemente queda más
-    # chico dentro de ella (nunca se recorta); si es más chica, se
-    # reduce para que quepa completo.
-    escala = min(area.width() / ANCHO, area.height() / ALTO)
+    escala = min(area.width() / ANCHO, area.height() / alto)
     ancho_dibujo = ANCHO * escala
-    alto_dibujo = ALTO * escala
+    alto_dibujo = alto * escala
 
     # Centrado dentro del área real.
     x = area.x() + (area.width() - ancho_dibujo) / 2
     y = area.y() + (area.height() - alto_dibujo) / 2
 
-    painter.setWindow(0, 0, ANCHO, ALTO)
+    logger.info(
+        "Driver: area=%dx%d px, escala=%.3f, origen=(%.0f,%.0f)",
+        area.width(), area.height(), escala, x, y,
+    )
+
+    painter.setWindow(0, 0, ANCHO, alto)
     painter.setViewport(int(x), int(y), int(ancho_dibujo), int(alto_dibujo))
 
-    _dibujar_contenido_etiqueta(painter, datos)
+    _dibujar_contenido_etiqueta(painter, datos, alto_mm)
     painter.end()
 
 
 def imprimir_etiqueta_frescas(
     datos: DatosEtiquetaFrescas,
     nombre_impresora: str,
+    alto_mm=None,
 ) -> None:
     """
     Decide cómo imprimir según el destino:
       - ruta que termina en .pdf        -> archivo PDF directo
       - impresora virtual con 'pdf'     -> driver de Windows (QPrinter)
       - cualquier otra (Godex/Zebra)    -> ZPL RAW
+
+    alto_mm es opcional (30 a 50). Si no se indica, se usa ALTO_MM, así el
+    código que ya llamaba con dos argumentos sigue funcionando.
     """
+    alto_mm, _, alto_dots = medidas_alto(alto_mm)
     destino = nombre_impresora.lower()
 
+    logger.info(
+        "IMPRIMIR impresora=%r etiqueta=%dx%d mm (%dx%d puntos)",
+        nombre_impresora, ANCHO_MM, alto_mm, ANCHO_DOTS, alto_dots,
+    )
+
     if destino.endswith(".pdf"):
-        generar_pdf_etiqueta(datos, nombre_impresora)
+        generar_pdf_etiqueta(datos, nombre_impresora, alto_mm)
         return
 
     if "pdf" in destino:
-        _imprimir_con_driver(datos, nombre_impresora)
+        logger.info("Destino: driver de Windows (QPrinter)")
+        _imprimir_con_driver(datos, nombre_impresora, alto_mm)
         return
-    
-    diagnostico = diagnosticar_impresora_raw(nombre_impresora)   # <-- nuevo
-    imprimir_log_diagnostico_raw(diagnostico)    
-    
+
+    logger.info(
+        "Destino: ZPL RAW | prueba=%s medio=%s desplaz=(%s,%s)",
+        PRUEBA_ZPL, MEDIO_ZEBRA, DESPLAZ_X, DESPLAZ_Y,
+    )
+
+    diagnostico = diagnosticar_impresora_raw(nombre_impresora)
+    imprimir_log_diagnostico_raw(diagnostico)
+
+    img = None
     if PRUEBA_ZPL == "A":
-        zpl = zpl_regla_prueba(ANCHO_DOTS, ALTO_DOTS, MEDIO_ZEBRA)
-    
+        zpl = zpl_regla_prueba(ANCHO_DOTS, alto_dots, MEDIO_ZEBRA)
+
     elif PRUEBA_ZPL == "B":
-        zpl = zpl_marco_prueba(ANCHO_DOTS, ALTO_DOTS, MEDIO_ZEBRA,
-                               desplaz_x=0, desplaz_y=0)
+        zpl = zpl_marco_prueba(
+            ANCHO_DOTS, alto_dots, MEDIO_ZEBRA, desplaz_x=0, desplaz_y=0
+        )
+
     elif PRUEBA_ZPL == "C":
+        img = _renderizar_para_zebra(datos, alto_mm)   # se renderiza UNA vez
         zpl = imagen_a_zpl(
-            _renderizar_para_zebra(datos), MEDIO_ZEBRA,
+            img, MEDIO_ZEBRA,
             desplaz_x=DESPLAZ_X, desplaz_y=DESPLAZ_Y,
         )
-        img = _renderizar_para_zebra(datos)
-        img.save("debug_etiqueta.png")
+
     else:
         raise ValueError("PRUEBA_ZPL debe ser 'A', 'B' o 'C'")
 
-    enviar_zpl(nombre_impresora, zpl)
+    logger.info("ZPL generado: %d caracteres", len(zpl))
+    _guardar_debug(img, zpl)
+
+    try:
+        enviar_zpl(nombre_impresora, zpl)
+    except Exception:
+        logger.exception("Falló el envío del ZPL a %r", nombre_impresora)
+        raise
+
+    logger.info("ZPL enviado a %r sin errores", nombre_impresora)
