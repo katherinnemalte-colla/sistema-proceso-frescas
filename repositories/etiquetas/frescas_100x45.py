@@ -58,7 +58,7 @@ from .motor_impresion import (
     diagnosticar_impresora_raw,
     imprimir_log_diagnostico_raw,
 )
-from ui.perfil_impresora import (
+from repositories.etiquetas.perfil_impresora import (
     ALTO_MM_DEFECTO,
     ALTO_MM_MAX,
     ALTO_MM_MIN,
