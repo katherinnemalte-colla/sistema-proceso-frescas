@@ -95,7 +95,7 @@ MEDIO_ZEBRA = "N"
 ANCHO = ANCHO_MM * 10
 
 # Margen igual en los CUATRO lados, en unidades lógicas (25 = 2,5 mm).
-MARGEN = 0
+MARGEN = 35
 
 QR_SIZE = 170             # tamaño MÁXIMO del QR (se achica en etiquetas bajas)
 SEPARACION_QR = 7
@@ -116,7 +116,7 @@ ESCALA_MIN_AVISO = 0.5
 
 # Dibuja un marco en el borde de la etiqueta (vista previa e impresión).
 # Útil para comprobar qué borde se corta; dejar en False en producción.
-MARCO_DE_PRUEBA = False
+MARCO_DE_PRUEBA = True
 
 # Guarda debug_etiqueta.png y ultimo_envio.zpl en la carpeta de logs cada
 # vez que se imprime por ZPL. Útil para probar; poner False en producción.
