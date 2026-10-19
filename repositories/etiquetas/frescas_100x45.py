@@ -116,7 +116,7 @@ ESCALA_MIN_AVISO = 0.5
 
 # Dibuja un marco en el borde de la etiqueta (vista previa e impresión).
 # Útil para comprobar qué borde se corta; dejar en False en producción.
-MARCO_DE_PRUEBA = True
+MARCO_DE_PRUEBA = False
 
 # Guarda debug_etiqueta.png y ultimo_envio.zpl en la carpeta de logs cada
 # vez que se imprime por ZPL. Útil para probar; poner False en producción.

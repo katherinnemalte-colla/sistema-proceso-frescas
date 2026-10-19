@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
 )
 
 from repositories.etiquetas import frescas_100x45 as frescas
-from ui.perfil_impresora import (
+from repositories.etiquetas.perfil_impresora import (
     ALTO_MM_MAX,
     ALTO_MM_MIN,
     ANCHO_MM,
