@@ -95,16 +95,16 @@ MEDIO_ZEBRA = "N"
 ANCHO = ANCHO_MM * 10
 
 # Margen igual en los CUATRO lados, en unidades lógicas (25 = 2,5 mm).
-MARGEN = 35
+MARGEN = 54
 
 QR_SIZE = 170             # tamaño MÁXIMO del QR (se achica en etiquetas bajas)
 SEPARACION_QR = 7
-SEPARACION_BLOQUES = 10   # espacio entre el texto superior y la franja inferior
+SEPARACION_BLOQUES = 5   # espacio entre el texto superior y la franja inferior
 GROSOR_LINEA = 5
 
 # Solo se usan si la impresora NO tiene perfil guardado (compatibilidad).
-DESPLAZ_X = -10
-DESPLAZ_Y = -25
+DESPLAZ_X = 0
+DESPLAZ_Y = 0
 
 # ---- Adaptación al alto ----
 QR_MIN = 110              # el QR no baja de 11 mm (si no, se lee mal)
@@ -116,7 +116,7 @@ ESCALA_MIN_AVISO = 0.5
 
 # Dibuja un marco en el borde de la etiqueta (vista previa e impresión).
 # Útil para comprobar qué borde se corta; dejar en False en producción.
-MARCO_DE_PRUEBA = False
+MARCO_DE_PRUEBA = True
 
 # Guarda debug_etiqueta.png y ultimo_envio.zpl en la carpeta de logs cada
 # vez que se imprime por ZPL. Útil para probar; poner False en producción.
@@ -623,7 +623,7 @@ def _dibujar_contenido_etiqueta(
         y, 34,
         f"Fecha Empacado: {fecha_empaque}",
         f"Contenido Neto:{peso_texto}",
-        tamano=25,
+        tamano=23,
         negrita_der=True,
         prop_izq=0.42,
     )
@@ -640,7 +640,7 @@ def _dibujar_contenido_etiqueta(
         f"Fecha Beneficio: {datos.fecha_sacrificio}",
         f"Lote:{datos.lote}{nivel_texto}",
         f"F.Vto.Refrigeracion: {_formatear_fecha(datos.fecha_vencimiento_str)}",
-        tamano=22,
+        tamano=20,
     )
     y += saltos[2]
 

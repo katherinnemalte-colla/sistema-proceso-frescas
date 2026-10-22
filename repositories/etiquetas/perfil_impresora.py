@@ -1,5 +1,5 @@
 """
-Perfiles de impresora (ajuste de la etiqueta por pérdida en los bordes).
+Perfiles de impresora (ajuste de la etiqueta por desplazamiento).
 
 Los perfiles se guardan en la BD, tabla dbo.basicas, una fila por
 equipo (hostname de Windows) + impresora:
@@ -8,6 +8,13 @@ equipo (hostname de Windows) + impresora:
     codig_elem = nombre impresora  valor1 = alto_mm
     valor2 = izquierda             valor3 = arriba
     valor4c = derecha (texto)      valor5c = abajo (texto)
+
+Ajuste por DESPLAZAMIENTO PURO: el contenido nunca se reduce ni se
+deforma (escala siempre 1). Cada valor, en mm, mueve el contenido
+desde ese borde:
+    positivo -> empuja el contenido hacia adentro (se aleja de ese borde)
+    negativo -> lo acerca a ese borde (si se pasa, se corta)
+Lados opuestos se compensan: x = izq - der ; y = arr - aba.
 
 Todos los errores de lectura/validación se registran en el log y se
 reemplazan por valores seguros: un problema con la BD o con un dato
@@ -33,9 +40,9 @@ DESCRIPCION_PERFIL = "Perfil de impresora (ajuste de etiqueta)"
 # ----------------------------------------------------------------------
 # Geometría fija de la etiqueta
 # ----------------------------------------------------------------------
-ANCHO_MM = 100            # el ancho es siempre 100 mm
-ALTO_MM_MIN = 30          # límites del alto: NO se tocan
-ALTO_MM_MAX = 50
+ANCHO_MM = 100             # el ancho es siempre 100 mm
+ALTO_MM_MIN = 52          # límites del alto: NO se tocan
+ALTO_MM_MAX = 55
 ALTO_MM_DEFECTO = 45
 
 DPI_ESPERADO = 203        # el programa está calibrado para 203 DPI
@@ -44,10 +51,10 @@ DOTS_POR_MM = 8           # 203 DPI ≈ 8 puntos por mm
 # ----------------------------------------------------------------------
 # Límites del ajuste
 # ----------------------------------------------------------------------
-PERDIDA_MM_MAX = 6.0      # máximo que se admite por borde
+PERDIDA_MM_MAX = 6.0      # máximo desplazamiento por borde (+ o -)
 PASO_MM = 0.5             # los valores se redondean a pasos de 0,5 mm
-ESCALA_AVISO = 0.85       # por debajo: advertencia (letras más pequeñas)
-ESCALA_MINIMA = 0.65      # por debajo: no se permite guardar ni imprimir
+ESCALA_AVISO = 0.85       # (sin uso con desplazamiento: la escala es 1)
+ESCALA_MINIMA = 0.65      # (sin uso con desplazamiento: la escala es 1)
 
 
 # ----------------------------------------------------------------------
@@ -74,15 +81,17 @@ def _numero(valor, defecto: float, minimo: float, maximo: float, nombre: str) ->
 
 
 def _borde(valor, nombre: str) -> float:
-    n = _numero(valor, 0.0, 0.0, PERDIDA_MM_MAX, nombre)
-    return round(n / PASO_MM) * PASO_MM
+    """Desplazamiento de un borde: de -PERDIDA_MM_MAX a +PERDIDA_MM_MAX."""
+    n = _numero(valor, 0.0, -PERDIDA_MM_MAX, PERDIDA_MM_MAX, nombre)
+    return round(n / PASO_MM) * PASO_MM + 0.0       # "+ 0.0" evita -0.0
 
 
 @dataclass(frozen=True)
 class PerfilImpresora:
     """
     alto_mm        : alto de la etiqueta (30 a 50)
-    perdida_*_mm   : lo que se CORTA en ese borde, en mm (0 = no se corta)
+    perdida_*_mm   : desplazamiento desde ese borde, en mm
+                     (+ aleja el contenido del borde, - lo acerca; 0 = sin ajuste)
     """
     alto_mm: int = ALTO_MM_DEFECTO
     perdida_izq_mm: float = 0.0
@@ -103,34 +112,40 @@ class PerfilImpresora:
 
     def colocacion(self) -> Tuple[float, float, float]:
         """
-        (x, y, escala) para dibujar el contenido dentro de la zona que sí
-        sale. x e y están en puntos de impresora; la escala (<= 1) es
-        relativa a la etiqueta completa y es la misma en ancho y alto.
+        (x, y, escala) para dibujar el contenido. x e y son el
+        desplazamiento en puntos de impresora respecto a la etiqueta
+        completa (pueden ser negativos); la escala es SIEMPRE 1.0:
+        el contenido no se reduce ni se deforma, solo se mueve y, si se
+        pasa del borde, se corta.
         """
         p = self.validado()
-        ancho_dots = ANCHO_MM * DOTS_POR_MM
-        alto_dots = p.alto_mm * DOTS_POR_MM
-
         izq = round(p.perdida_izq_mm * DOTS_POR_MM)
         arr = round(p.perdida_arr_mm * DOTS_POR_MM)
         der = round(p.perdida_der_mm * DOTS_POR_MM)
         aba = round(p.perdida_aba_mm * DOTS_POR_MM)
 
-        w = ancho_dots - izq - der      # ancho que sí sale
-        h = alto_dots - arr - aba       # alto que sí sale
-        escala = min(w / ancho_dots, h / alto_dots)
-
-        # Centrado dentro de la zona que sí sale.
-        x = izq + (w - ancho_dots * escala) / 2
-        y = arr + (h - alto_dots * escala) / 2
-        return x, y, escala
+        x = float(izq - der)
+        y = float(arr - aba)
+        return x, y, 1.0
 
     def escala(self) -> float:
         return self.colocacion()[2]
 
+    def contenido_cortado_mm(self) -> Tuple[float, float, float, float]:
+        """
+        (izq, arr, der, aba): mm de contenido que se pierden en cada borde
+        por el desplazamiento. Útil para avisar en pantalla.
+        """
+        p = self.validado()
+        dx = p.perdida_izq_mm - p.perdida_der_mm
+        dy = p.perdida_arr_mm - p.perdida_aba_mm
+        return (max(-dx, 0.0) + 0.0, max(-dy, 0.0) + 0.0,
+                max(dx, 0.0) + 0.0, max(dy, 0.0) + 0.0)
+
 
 def nivel_escala(escala: float) -> str:
-    """'ok', 'aviso' (letras más pequeñas) o 'bloqueado' (demasiado reducido)."""
+    """'ok', 'aviso' (letras más pequeñas) o 'bloqueado' (demasiado reducido).
+    Con desplazamiento puro la escala es 1, así que siempre devuelve 'ok'."""
     if escala < ESCALA_MINIMA:
         return "bloqueado"
     if escala < ESCALA_AVISO:
@@ -147,7 +162,7 @@ def nombre_equipo() -> str:
 
 
 def _texto_a_numero(valor, nombre: str) -> float:
-    """valor4c / valor5c vienen como texto; si no sirve, 0.0 (sin recorte)."""
+    """valor4c / valor5c vienen como texto; si no sirve, 0.0 (sin ajuste)."""
     try:
         return float(str(valor).strip().replace(",", "."))
     except (TypeError, ValueError):

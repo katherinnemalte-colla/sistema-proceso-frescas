@@ -9,6 +9,11 @@ Camino recomendado (independiente del driver de Windows):
 En modo RAW el spooler pasa los bytes tal cual a la impresora, así que el
 tamaño de papel, los márgenes y el escalado configurados en Windows YA NO
 influyen. Por eso la etiqueta sale igual en todos los computadores.
+
+Velocidad, oscuridad, método de impresión y modo (rasgar/cortar) NO los
+manda el programa: se configuran en la impresora (Zebra Setup Utilities o
+panel) y se conservan. El programa solo manda tamaño, desplazamiento y
+contenido de la etiqueta.
 """
 
 import io
@@ -33,17 +38,80 @@ logger = logging.getLogger(__name__)
 # Por debajo de este nivel de gris (0-255) un punto se imprime en negro.
 UMBRAL_NEGRO = 128
 
+# Sensor de papel que manda el programa ("" = NO enviar ^MN y respetar lo
+# configurado en la impresora). Valores: "Y" gap, "M" marca negra, "N" continuo.
+MEDIO_ZEBRA = ""
+MEDIO_GODEX = ""
 
-def imagen_a_zpl(img, medio="N", desplaz_x=0, desplaz_y=0):
+# Largo físico de la etiqueta troquelada de la Zebra, en mm, para ^LL.
+# 0 = NO enviar ^LL: la Zebra usa el largo que midió al calibrar.
+ALTO_PAPEL_ZEBRA_MM = 0
+
+
+def parametros_medio(nombre_impresora: str):
+    """
+    (medio, alto_papel_dots) según la marca de la impresora.
+
+    Godex (papel continuo): sin ^MN y ^LL = alto de la imagen (None).
+    Cualquier otra (Zebra troquelada): medio de MEDIO_ZEBRA y, si
+    ALTO_PAPEL_ZEBRA_MM > 0, ese largo físico en ^LL; con 0 no se envía ^LL.
+    """
+    if "godex" in nombre_impresora.lower():
+        return MEDIO_GODEX, None
+    return MEDIO_ZEBRA, ALTO_PAPEL_ZEBRA_MM * 8      # 8 puntos por mm
+
+
+# Calidad de impresión que puede mandar el programa SOLO a la Zebra.
+# None = no enviar nada (la impresora usa lo que tenga guardado; se
+# configura una vez con Zebra Setup Utilities). Si se pone un número, se
+# manda antes de CADA etiqueta y pisa lo configurado en la impresora.
+OSCURIDAD_ZEBRA = None    # 0-30 (~SD). Ej. 15
+VELOCIDAD_ZEBRA = None    # pulgadas/seg (^PR). Ej. 4 (la ZD230 llega hasta 6)
+
+
+def _prefijo_calidad(nombre_impresora: str) -> str:
+    """
+    Comandos de oscuridad/velocidad para anteponer al ZPL. Cadena vacía si
+    las constantes están en None o si la impresora es Godex. No usa ^JUS:
+    no escribe en la memoria permanente de la impresora.
+    """
+    if "godex" in nombre_impresora.lower():
+        return ""
+
+    partes = []
+    if OSCURIDAD_ZEBRA is not None:
+        try:
+            oscuridad = max(0, min(30, int(OSCURIDAD_ZEBRA)))
+            partes.append(f"~SD{oscuridad:02d}")
+        except (TypeError, ValueError):
+            logger.warning("OSCURIDAD_ZEBRA=%r no es válido; no se envía",
+                           OSCURIDAD_ZEBRA)
+    if VELOCIDAD_ZEBRA is not None:
+        try:
+            velocidad = max(2, min(12, int(VELOCIDAD_ZEBRA)))
+            partes.append(f"^XA^PR{velocidad}^XZ")
+        except (TypeError, ValueError):
+            logger.warning("VELOCIDAD_ZEBRA=%r no es válido; no se envía",
+                           VELOCIDAD_ZEBRA)
+    return "".join(partes)
+
+
+def imagen_a_zpl(img, medio="", desplaz_x=0, desplaz_y=0, alto_papel_dots=None):
     """
     Convierte una imagen a un comando ZPL (^GFA) en blanco y negro.
 
-    medio: tipo de sensor de la Zebra.
+    medio: tipo de sensor de la impresora.
+        ""  -> no se envía ^MN (se respeta la configuración de la impresora)
         "Y" -> etiquetas con separación (gap)   [^MNY]
         "M" -> etiquetas con marca negra         [^MNM]
         "N" -> papel continuo                    [^MNN]
 
-    Comandos de la cabecera:
+    alto_papel_dots: largo de la etiqueta para ^LL, en puntos.
+        None -> se usa el alto de la imagen (papel continuo).
+        > 0  -> largo físico (nunca menor que la imagen).
+        0    -> no se envía ^LL: la impresora usa el largo calibrado.
+
+    Comandos de la cabecera (todos son de ESTA etiqueta, no de la impresora):
         ^PW  ancho de impresión en puntos
         ^LL  largo de la etiqueta en puntos
         ^LH  origen de la etiqueta (0,0)
@@ -55,7 +123,13 @@ def imagen_a_zpl(img, medio="N", desplaz_x=0, desplaz_y=0):
     if rec_x or rec_y:
         img = img.copy(rec_x, rec_y, ancho_total - rec_x, alto_total - rec_y)
     fo_x, fo_y = max(0, desplaz_x), max(0, desplaz_y)
-    
+
+    mn = f"^MN{medio}" if medio else ""
+    if alto_papel_dots == 0:
+        ll = ""                                    # usar el largo calibrado
+    else:
+        ll = f"^LL{max(alto_papel_dots or 0, alto_total)}"
+
     img = img.convertToFormat(QImage.Format.Format_Grayscale8)
     ancho, alto = img.width(), img.height()
     bytes_fila = (ancho + 7) // 8          # 8 puntos por byte
@@ -78,34 +152,39 @@ def imagen_a_zpl(img, medio="N", desplaz_x=0, desplaz_y=0):
 
     total = len(datos)
     return (
-        f"^XA^MN{medio}^PW{ancho_total}^LL{alto_total}"
+        f"^XA{mn}^PW{ancho_total}{ll}"
         f"^LH0,0^LT0^LS0^PON^PMN"
         f"^FO{fo_x},{fo_y}^GFA,{total},{total},{bytes_fila},{datos.hex().upper()}^FS"
         f"^XZ"
     )
     
 def zpl_marco_prueba(ancho_dots, alto_dots, medio="Y", desplaz_x=0, desplaz_y=0):
+    mn = f"^MN{medio}" if medio else ""
     return (
-        f"^XA^MN{medio}^PW{ancho_dots}^LL{alto_dots}^LH0,0"
+        f"^XA{mn}^PW{ancho_dots}^LL{alto_dots}^LH0,0"
         f"^LT{desplaz_y}^LS{desplaz_x}"
         f"^FO0,0^GB{ancho_dots},{alto_dots},4^FS^XZ"
     )
 
 def zpl_regla_prueba(ancho_dots: int, alto_dots: int, medio: str = "Y") -> str:
     """Marcas cada 10 mm (80 puntos) arriba y a la izquierda, más el marco."""
+    mn = f"^MN{medio}" if medio else ""
     marcas = ""
     for x in range(0, ancho_dots, 80):
         marcas += f"^FO{x},0^GB3,40,3^FS"       # marca vertical arriba
     for y in range(0, alto_dots, 80):
         marcas += f"^FO0,{y}^GB40,3,3^FS"       # marca horizontal a la izquierda
     return (
-        f"^XA^MN{medio}^PW{ancho_dots}^LL{alto_dots}^LH0,0^LT0"
+        f"^XA{mn}^PW{ancho_dots}^LL{alto_dots}^LH0,0^LT0"
         f"{marcas}^FO0,0^GB{ancho_dots},{alto_dots},4^FS^XZ"
     )
 def enviar_zpl(nombre_impresora: str, zpl: str) -> None:
     import win32print
 
-    datos = zpl.encode("ascii")
+    prefijo = _prefijo_calidad(nombre_impresora) if zpl.lstrip().startswith("^XA") else ""
+    if prefijo:
+        logger.info("Calidad enviada a %r: %s", nombre_impresora, prefijo)
+    datos = (prefijo + zpl).encode("ascii")
     logger.info("ENVIO ZPL impresora=%r bytes=%d", nombre_impresora, len(datos))
     logger.debug("ZPL inicio: %s", zpl[:120])
 
