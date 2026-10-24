@@ -88,7 +88,7 @@ ANCHO_DOTS = ANCHO_MM * DOTS_POR_MM   # 800 (el alto en puntos se calcula aparte
 
 # Tipo de sensor de la Zebra: "Y" = etiquetas con separación (gap),
 # "M" = marca negra, "N" = continuo.
-MEDIO_ZEBRA = "N"
+MEDIO_ZEBRA = ""
 
 # Coordenadas lógicas de dibujo: 1 unidad = 0,1 mm.
 # El ancho es fijo (1000 unidades); el alto = alto_mm * 10 (300 a 500).

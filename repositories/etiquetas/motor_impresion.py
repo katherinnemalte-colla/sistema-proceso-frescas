@@ -40,10 +40,13 @@ UMBRAL_NEGRO = 128
 
 # Sensor de papel que manda el programa ("" = NO enviar ^MN y respetar lo
 # configurado en la impresora). Valores: "Y" gap, "M" marca negra, "N" continuo.
-MEDIO_ZEBRA = ""
-MEDIO_GODEX = ""
+MEDIO_ZEBRA = ""        # Zebra con etiquetas troqueladas: sensor de separación
+MEDIO_GODEX = ""         # Godex continua: no se toca lo configurado
 
-# Largo físico de la etiqueta troquelada de la Zebra, en mm, para ^LL.
+# Largo de la etiqueta de la Zebra para ^LL, en mm (admite decimales).
+# OJO: es la distancia de una etiqueta a la siguiente (etiqueta + separación),
+# NO solo los 50 mm de la etiqueta. Se lee de la etiqueta de configuración
+# (imprimir_etiqueta_configuracion): "LABEL LENGTH" en puntos, dividido entre 8.
 # 0 = NO enviar ^LL: la Zebra usa el largo que midió al calibrar.
 ALTO_PAPEL_ZEBRA_MM = 0
 
@@ -58,7 +61,7 @@ def parametros_medio(nombre_impresora: str):
     """
     if "godex" in nombre_impresora.lower():
         return MEDIO_GODEX, None
-    return MEDIO_ZEBRA, ALTO_PAPEL_ZEBRA_MM * 8      # 8 puntos por mm
+    return MEDIO_ZEBRA, int(round(ALTO_PAPEL_ZEBRA_MM * 8))      # 8 puntos por mm
 
 
 # Calidad de impresión que puede mandar el programa SOLO a la Zebra.
@@ -215,6 +218,15 @@ def enviar_zpl(nombre_impresora: str, zpl: str) -> None:
         raise
     finally:
         win32print.ClosePrinter(handle)
+
+
+def imprimir_etiqueta_configuracion(nombre_impresora: str) -> None:
+    """
+    Imprime la etiqueta de configuración de la Zebra (~WC). Sirve para leer
+    el largo de etiqueta que midió la calibración ("LABEL LENGTH", en puntos)
+    y confirmar tipo de medio, ajuste de rasgado, oscuridad y velocidad.
+    """
+    enviar_zpl(nombre_impresora, "~WC")
 
 
 # ======================================================================

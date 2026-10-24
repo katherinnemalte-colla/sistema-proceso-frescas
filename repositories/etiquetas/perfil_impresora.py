@@ -41,9 +41,9 @@ DESCRIPCION_PERFIL = "Perfil de impresora (ajuste de etiqueta)"
 # Geometría fija de la etiqueta
 # ----------------------------------------------------------------------
 ANCHO_MM = 100             # el ancho es siempre 100 mm
-ALTO_MM_MIN = 52          # límites del alto: NO se tocan
-ALTO_MM_MAX = 55
-ALTO_MM_DEFECTO = 45
+ALTO_MM_MIN = 50          # límites del alto: NO se tocan
+ALTO_MM_MAX = 50
+ALTO_MM_DEFECTO = 50
 
 DPI_ESPERADO = 203        # el programa está calibrado para 203 DPI
 DOTS_POR_MM = 8           # 203 DPI ≈ 8 puntos por mm
