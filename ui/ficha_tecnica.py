@@ -1114,11 +1114,12 @@ class FichaTecnica(QWidget):
         self._limpiar_y_volver()
         bascula_service.detener()
         self._app.mostrar_seleccion_sin_recargar()
-
+    
     def _on_peso_actualizado(self, nuevo_peso: float) -> None:
+        obtener_puerto_config = bascula_service._obtener_puerto_configurado()
         self.peso_neto_kg = nuevo_peso
         self.etiqueta_peso.setText(f"{nuevo_peso:.3f}")
-        self.etiqueta_peso_neto.setText(f"Peso neto        {nuevo_peso:.3f} kg ")
+        self.etiqueta_peso_neto.setText(f"Peso neto        {nuevo_peso:.3f} kg "+ f"Puerto: {obtener_puerto_config}")
 
         if getattr(self, "_historico_seleccionado", None) is not None:
             return   # hay un histórico en pantalla: la báscula no debe pisar ese preview

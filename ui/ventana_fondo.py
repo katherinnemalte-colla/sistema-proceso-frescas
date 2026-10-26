@@ -39,8 +39,6 @@ class VentanaFondo(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Etiquetas 2 en 1")
-
         self.setWindowFlags(
             Qt.Window
             | Qt.WindowMinimizeButtonHint

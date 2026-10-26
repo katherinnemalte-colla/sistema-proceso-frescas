@@ -58,6 +58,9 @@ ID_ESPECIE_RES = 1
 ANCHO_CONTENIDO_MAX = 760
 ANCHO_CONTENIDO_MIN = 380
 
+# Lado (en px, antes de escalar) de los botones cuadrados del pie
+LADO_BOTON_CUADRADO = 130
+
 
 class VentanaPrincipal(QWidget):
 
@@ -109,12 +112,11 @@ class VentanaPrincipal(QWidget):
 
         # ==========================================================
         # LAYOUT EXTERNO: centra el bloque de contenido en la ventana
+        # (horizontal y verticalmente)
         # ==========================================================
 
         layout_externo = QVBoxLayout()
         layout_externo.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
-
-    
 
         fila_central = QHBoxLayout()
 
@@ -132,10 +134,20 @@ class VentanaPrincipal(QWidget):
             QSizePolicy.Expanding,
             QSizePolicy.Preferred
         )
+        # Ancho acotado para que el bloque quede centrado y no se estire
+        contenedor.setMaximumWidth(escalar(ANCHO_CONTENIDO_MAX))
+        contenedor.setMinimumWidth(escalar(ANCHO_CONTENIDO_MIN))
         contenedor.setLayout(layout)
 
-        fila_central.addWidget(contenedor,1)
+        # Márgenes elásticos a los lados -> contenido centrado en horizontal
+        fila_central.addStretch(1)
+        fila_central.addWidget(contenedor, 100)
+        fila_central.addStretch(1)
+
+        # Márgenes elásticos arriba y abajo -> contenido centrado en vertical
+        layout_externo.addStretch(1)
         layout_externo.addLayout(fila_central)
+        layout_externo.addStretch(1)
 
         # ==========================================================
         # TÍTULO + SUBTÍTULO (centrados)
@@ -199,7 +211,7 @@ class VentanaPrincipal(QWidget):
         layout.addSpacing(10)
 
         # ==========================================================
-        # FECHA DE PRODUCCIÓN + LOTE (lado a lado)
+        # FECHA DE PRODUCCIÓN + LOTE + EMPRESA (lado a lado)
         # ==========================================================
 
         fila_campos = QHBoxLayout()
@@ -259,7 +271,7 @@ class VentanaPrincipal(QWidget):
         columna_lote.addWidget(etiqueta_lote)
         columna_lote.addWidget(contenedor_lote)
         
-                # --- Columna: empresa ---
+        # --- Columna: empresa ---
         columna_empresa = QVBoxLayout()
         columna_empresa.setSpacing(escalar(6))
 
@@ -328,9 +340,11 @@ class VentanaPrincipal(QWidget):
             }
         """)
         layout.addWidget(self.stack_pie)
+        # Preferred en vertical: el pie ocupa solo lo que necesitan los
+        # botones, así el bloque completo se mantiene centrado.
         self.stack_pie.setSizePolicy(
             QSizePolicy.Expanding,
-            QSizePolicy.Expanding
+            QSizePolicy.Preferred
         )
         self.setLayout(
             layout_externo
@@ -372,9 +386,11 @@ class VentanaPrincipal(QWidget):
     def _crear_boton_reiniciar(self) -> QPushButton:
         boton = QPushButton("Reiniciar")
         boton.setCursor(Qt.PointingHandCursor)
-        boton.setMinimumSize(220, 46)
-        boton.setMaximumWidth(320)
-        boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # Botón cuadrado, mismo tamaño que los de tipo de pieza
+        boton.setFixedSize(
+            escalar(LADO_BOTON_CUADRADO),
+            escalar(LADO_BOTON_CUADRADO)
+        )
         boton.setStyleSheet(f"""
             QPushButton {{
                 background-color: #1E6FD9;
@@ -382,7 +398,7 @@ class VentanaPrincipal(QWidget):
                 font-size: {escalar_fuente(15)}px;
                 font-weight: bold;
                 border: none;
-                border-radius: 10px;
+                border-radius: 14px;
             }}
             QPushButton:hover {{ background-color: #1A62BE; }}
             QPushButton:pressed {{ background-color: #164F9C; }}
@@ -413,6 +429,7 @@ class VentanaPrincipal(QWidget):
 
         self._fila_botones_tipo_pieza = QHBoxLayout()
         self._fila_botones_tipo_pieza.setSpacing(escalar(16))
+        self._fila_botones_tipo_pieza.setAlignment(Qt.AlignCenter)
 
         layout_panel.addLayout(self._fila_botones_tipo_pieza)
 
@@ -427,26 +444,32 @@ class VentanaPrincipal(QWidget):
             else "Confirme la opción"
         )
 
-        # Limpiar botones de la especie anterior
+        # Limpiar botones de la especie anterior (y los espaciadores)
         while self._fila_botones_tipo_pieza.count():
             item = self._fila_botones_tipo_pieza.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
 
+        # Espaciador izquierdo -> botones centrados
+        self._fila_botones_tipo_pieza.addStretch(1)
+
         for tpo_pza, nombre_tipo, color in tipos_pieza:
             boton = QPushButton(nombre_tipo)
             boton.setCursor(Qt.PointingHandCursor)
-            boton.setMinimumSize(160, 52)
-            boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            # Botón cuadrado, mismo tamaño que Reiniciar
+            boton.setFixedSize(
+                escalar(LADO_BOTON_CUADRADO),
+                escalar(LADO_BOTON_CUADRADO)
+            )
             boton.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {color};
                     color: white;
                     font-size: {escalar_fuente(15)}px;
                     font-weight: 700;
-                    border: none;
-                    border-radius: 10px;
+                    border: 2px solid transparent;
+                    border-radius: 14px;
                 }}
                 QPushButton:hover {{
                     background-color: {color};
@@ -465,6 +488,9 @@ class VentanaPrincipal(QWidget):
 
         # El Reiniciar siempre está presente, en las 3 especies
         self._fila_botones_tipo_pieza.addWidget(self._crear_boton_reiniciar())
+
+        # Espaciador derecho -> botones centrados
+        self._fila_botones_tipo_pieza.addStretch(1)
 
     # ==============================================================
     # CAMPO CON ICONO (fecha / lote)
@@ -674,11 +700,13 @@ class VentanaPrincipal(QWidget):
         for id_especie, etiqueta, archivo_icono, color in ESPECIES:
 
             tarjeta = QFrame()
+            # Todas las tarjetas del mismo tamaño -> alineadas entre sí
             tarjeta.setSizePolicy(
                 QSizePolicy.Expanding,
-                QSizePolicy.Preferred
+                QSizePolicy.Fixed
             )
             tarjeta.setMinimumWidth(escalar(160))
+            tarjeta.setFixedHeight(escalar(260))
             tarjeta.setStyleSheet(f"""
                 QFrame#tarjeta {{
                     background-color: white;
@@ -722,7 +750,7 @@ class VentanaPrincipal(QWidget):
             else:
                 print(f"no existe la imagen {ruta_icono}")
 
-            layout_tarjeta.addWidget(imagen)
+            layout_tarjeta.addWidget(imagen, 1)
 
             # ------------------------------------------------------
             # NOMBRE
@@ -744,13 +772,13 @@ class VentanaPrincipal(QWidget):
 
             boton.setCheckable(True)
             boton.setCursor(Qt.PointingHandCursor)
-            boton.setMinimumHeight(escalar(42))
+            boton.setFixedHeight(escalar(56))
 
             boton.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {color};
                     color: white;
-                    font-size: {escalar_fuente(13)}px;
+                    font-size: {escalar_fuente(14)}px;
                     font-weight: 600;
                     border: none;
                     border-bottom-left-radius: 14px;
