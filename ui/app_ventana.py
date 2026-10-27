@@ -59,8 +59,9 @@ class VentanaApp(QMainWindow):
         peso_neto_kg,
         fecha_sacrificio,
         nom_impr_etiq=None,
-        empresa = 0,
+        empresa=0,
         fecha_vencimiento_str,
+        tipo_conservacion=None,   # NUEVO: "refrigerado" | "congelado" | None (automático)
         nmro_psta=0,
     ):
         if self.pantalla_ficha is not None:
@@ -78,12 +79,13 @@ class VentanaApp(QMainWindow):
             self,
             tpo_pza=tpo_pza,
             nombre_tipo_pieza=nombre_tipo_pieza,
-            peso_neto_kg = peso_neto_kg,
+            peso_neto_kg=peso_neto_kg,
             fecha_sacrificio=fecha_sacrificio,
             nom_impr_etiq=nom_impr_etiq,
             empresa=empresa,
             fecha_vencimiento_str=fecha_vencimiento_str,
-            nmro_psta=nmro_psta
+            tipo_conservacion=tipo_conservacion,   # NUEVO
+            nmro_psta=nmro_psta,
         )
         self.stack_principal.addWidget(self.pantalla_ficha)
         self.stack_principal.setCurrentWidget(self.pantalla_ficha)

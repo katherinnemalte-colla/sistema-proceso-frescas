@@ -7,14 +7,36 @@ fecha de sacrificio, usado en la sección "Tipo de limpieza" de Ficha Técnica.
 Capa: Repository. Toda el acceso a datos vive acá; la UI no arma SQL.
 """
 
-import os
 from dataclasses import dataclass
 from typing import List, Optional
 from datetime import date, timedelta
-from typing import Optional
 from config.settings import DB_DATABASE
 
 DB_PRODUCTOS = DB_DATABASE
+
+EMPRESA_POR_DEFECTO = 1
+
+
+def normalizar_empresa(codigo_empresa) -> int:
+    """
+    None, "", "  ", 0, "0" (o un valor no numérico) equivalen a la empresa 1.
+    Cualquier otro valor se devuelve como entero.
+    """
+    if codigo_empresa is None:
+        return EMPRESA_POR_DEFECTO
+
+    if isinstance(codigo_empresa, str):
+        codigo_empresa = codigo_empresa.strip()
+        if codigo_empresa == "":
+            return EMPRESA_POR_DEFECTO
+
+    try:
+        valor = int(codigo_empresa)
+    except (TypeError, ValueError):
+        return EMPRESA_POR_DEFECTO
+
+    return EMPRESA_POR_DEFECTO if valor == 0 else valor
+
 
 @dataclass
 class FichaTecnicaProducto:
@@ -23,18 +45,21 @@ class FichaTecnicaProducto:
     dia_refr: Optional[int]
     dia_cong: Optional[int]
 
+
 @dataclass
 class TipoLimpieza:
     tpo_lmpza: int
     nmbre: str
     prfjo: str
     ctgria_ascda: str
-    estdo: int 
+    estdo: int
+
 
 @dataclass
 class SacrificioEtiqueta:
     scrfcio: Optional[date]
     nom_impr_etiq: Optional[str]
+
 
 class ObtenerTipoLimpiezaRepository:
 
@@ -42,11 +67,10 @@ class ObtenerTipoLimpiezaRepository:
         self._obtener_conexion = obtener_conexion
 
     def obtener_tipos_limpieza(self) -> List[TipoLimpieza]:
-
         consulta = f"""
             SELECT tpo_lmpza, nmbre, prfjo, ctgria_ascda, estdo
             FROM [{DB_PRODUCTOS}].dbo.tpo_lmpza
-            WHERE estdo = 1 order by tpo_lmpza 
+            WHERE estdo = 1 ORDER BY tpo_lmpza
         """
 
         with self._obtener_conexion() as conexion:
@@ -63,7 +87,7 @@ class ObtenerTipoLimpiezaRepository:
                 for fila in cursor.fetchall()
             ]
 
-    def obtener_fecha_sacrificio(self, nmro_lte: int, espcie: int ) -> Optional[SacrificioEtiqueta]:
+    def obtener_fecha_sacrificio(self, nmro_lte: int, espcie: int) -> Optional[SacrificioEtiqueta]:
         consulta = f"""
             SELECT a.scrfcio, b.nom_impr_etiq
             FROM [{DB_PRODUCTOS}].dbo.LTES_CMPRA_ESPCIE a,
@@ -76,7 +100,7 @@ class ObtenerTipoLimpiezaRepository:
         """
         with self._obtener_conexion() as conexion:
             cursor = conexion.cursor()
-            cursor.execute(consulta, (nmro_lte,espcie,))
+            cursor.execute(consulta, (nmro_lte, espcie))
             fila = cursor.fetchone()
             if fila is None:
                 return None
@@ -88,15 +112,18 @@ class ObtenerTipoLimpiezaRepository:
     def obtener_dias_vencimiento(
         self,
         codigo_producto: int,
-        codigo_empresa: int,
+        codigo_empresa,
     ) -> tuple[Optional[int], Optional[int]]:
         """
         Trae (dias_ref, dias_cong) en una sola consulta.
+        Empresa None / "" / 0 se trata como empresa 1.
         """
+        codigo_empresa = normalizar_empresa(codigo_empresa)
+
         with self._obtener_conexion() as conexion:
             cursor = conexion.cursor()
 
-            if codigo_empresa == 1:
+            if codigo_empresa == EMPRESA_POR_DEFECTO:
                 cursor.execute("""
                     SELECT dias_ref, dias_cong
                     FROM PRDCTOS
@@ -108,7 +135,7 @@ class ObtenerTipoLimpiezaRepository:
                     FROM ficha_tec_prod_cli
                     WHERE cdgo_plu = ?
                     AND cod_emprsa = ?
-                    order by grmje
+                    ORDER BY grmje
                 """, (codigo_producto, codigo_empresa))
 
             row = cursor.fetchone()
@@ -120,58 +147,23 @@ class ObtenerTipoLimpiezaRepository:
     def obtener_fecha_vencimiento(
         self,
         codigo_producto: int,
-        codigo_empresa: int,
+        codigo_empresa,
         fecha_produccion: date,
-        tipo_conservacion: str
+        tipo_conservacion: str,
     ) -> Optional[date]:
-        
-        with self._obtener_conexion() as conexion:
-            cursor = conexion.cursor()
-        
-            if codigo_empresa == 1:
-                cursor.execute("""
-                    SELECT dias_ref, dias_cong
-                    FROM PRDCTOS
-                    WHERE cdgo_plu = ?
-                """, (codigo_producto,))
-        
-                row = cursor.fetchone()
-        
-                if not row:
-                    return None
-        
-                dias_ref = row.dias_ref
-                dias_cong = row.dias_cong
-        
-            else:
-                cursor.execute("""
-                    SELECT dia_refr, dia_cong
-                    FROM ficha_tec_prod_cli
-                    WHERE cdgo_plu = ?
-                      AND cod_emprsa = ?
-                      order by grmje
-                """, (codigo_producto, codigo_empresa))
-        
-                row = cursor.fetchone()
-        
-                if not row:
-                    return None
-        
-                dias_ref = row.dia_refr
-                dias_cong = row.dia_cong
-        
-            if tipo_conservacion == "refrigerado":
-                dias = dias_ref
-        
-            elif tipo_conservacion == "congelado":
-                dias = dias_cong
-        
-            else:
-                raise ValueError(
-                    "Tipo de conservación debe ser 'refrigerado' o 'congelado'"
-                )
-        
-            if dias is None:
-                return None
-        
-            return fecha_produccion + timedelta(days=int(dias))
+
+        if tipo_conservacion not in ("refrigerado", "congelado"):
+            raise ValueError(
+                "Tipo de conservación debe ser 'refrigerado' o 'congelado'"
+            )
+
+        dias_ref, dias_cong = self.obtener_dias_vencimiento(
+            codigo_producto, codigo_empresa
+        )
+
+        dias = dias_ref if tipo_conservacion == "refrigerado" else dias_cong
+
+        if dias is None:
+            return None
+
+        return fecha_produccion + timedelta(days=int(dias))

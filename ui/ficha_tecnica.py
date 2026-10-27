@@ -52,6 +52,7 @@ class FichaTecnica(QWidget):
         nom_impr_etiq=None,
         empresa,
         fecha_vencimiento_str,
+        tipo_conservacion=None,        # NUEVO
         nmro_psta,
     ):
         super().__init__()
@@ -73,6 +74,8 @@ class FichaTecnica(QWidget):
         self.nom_impr_etiq = nom_impr_etiq
         self.empresa = empresa
         self.fecha_vencimiento_str = fechas._asegurar_date(fecha_vencimiento_str)
+        self._tipo_conservacion_forzado = tipo_conservacion   # NUEVO: lo que mandó la pantalla
+        self.tipo_conservacion = tipo_conservacion or "refrigerado"   # NUEVO: valor inicial, antes de _crear_interfaz()
         self.nmro_psta = nmro_psta
         self.producto_completo = None
         if self.tpo_pza is not None:
@@ -132,13 +135,18 @@ class FichaTecnica(QWidget):
 
         repo = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
         dias_ref, dias_cong = repo.obtener_dias_vencimiento(codigo_producto, codigo_empresa)
+        hoy = date.today()
+        
+        def calcular(dias) -> Optional[date]:
+            # Solo es válido si hay días (> 0) y la fecha resultante es posterior a hoy
+            if dias is None or int(dias) <= 0:
+                return None
+            fecha = self.fecha_produccion + timedelta(days=int(dias))
+            return fecha if fecha > hoy else None
 
-        fecha_vencimiento_refrigeracion = (
-            self.fecha_produccion + timedelta(days=int(dias_ref)) if dias_ref is not None else None
-        )
-        fecha_vencimiento_congelacion = (
-            self.fecha_produccion + timedelta(days=int(dias_cong)) if dias_cong is not None else None
-        )
+        fecha_vencimiento_refrigeracion = calcular(dias_ref)
+        fecha_vencimiento_congelacion = calcular(dias_cong)
+        
         return dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion
 
     # ==============================================================
@@ -371,7 +379,10 @@ class FichaTecnica(QWidget):
             self._obtener_datos_vencimiento()
         )
 
-        if dias_cong is not None:
+        forzado = self._tipo_conservacion_forzado
+
+        if forzado == "congelado" or (forzado is None and fecha_vencimiento_congelacion is not None):
+            self.tipo_conservacion = "congelado"
             etiqueta_vencimiento = "F.Vto en Congelación:"
             self.fecha_vencimiento_str = fecha_vencimiento_congelacion
             fecha_vencimiento_str = (
@@ -380,6 +391,7 @@ class FichaTecnica(QWidget):
             )
             dias_vencimiento = dias_cong
         else:
+            self.tipo_conservacion = "refrigerado"
             etiqueta_vencimiento = "F.Vto en Refrigeración:"
             self.fecha_vencimiento_str = fecha_vencimiento_refrigeracion
             fecha_vencimiento_str = (
@@ -387,7 +399,7 @@ class FichaTecnica(QWidget):
                 if fecha_vencimiento_refrigeracion else "-"
             )
             dias_vencimiento = dias_ref
-
+            
         def formatear_fecha(fecha, formato="%d/%m/%Y", valor_defecto="N/A") -> str:
             if fecha is None:
                 return valor_defecto
@@ -858,6 +870,7 @@ class FichaTecnica(QWidget):
             nom_impr_etiq=self.nom_impr_etiq,
             numEspecie=self.numEspecie,
             fecha_vencimiento_str=self.fecha_vencimiento_str,
+            tipo_conservacion=self.tipo_conservacion,
             numero_ticket=self.numero_ticket,
         )
         
@@ -1060,6 +1073,8 @@ class FichaTecnica(QWidget):
             cdgo_plu=historico.get("cdgo_plu"),
             nom_prog=historico.get("nmbre_plu", ""),
         )
+        vence_ref = historico.get("fcha_vnce_ref")
+        vence_cong = historico.get("fcha_vnce_cong")
 
         return dict(
             producto=producto_para_etiqueta,
@@ -1072,9 +1087,8 @@ class FichaTecnica(QWidget):
             fecha_sacrificio=historico.get("fcha_scrfcio"),
             nom_impr_etiq=self.nom_impr_etiq,
             numEspecie=self.numEspecie,
-            fecha_vencimiento_str=(
-                historico.get("fcha_vnce_ref") or historico.get("fcha_vnce_cong")
-            ),
+            #fecha_vencimiento_str=( historico.get("fcha_vnce_ref") or historico.get("fcha_vnce_cong")),
+            fecha_vencimiento_str=vence_ref or vence_cong,
             numero_ticket=historico.get("nmro_psta"),  # clave: reutiliza el consecutivo, no genera uno nuevo
         )
     def _construir_datos_historico_actualizado(self) -> dict:
@@ -1082,14 +1096,17 @@ class FichaTecnica(QWidget):
         # se reutilizan los valores ya cargados en la sesión actual.
         # pso_tra, pso_brto, pddo y prcndor no se capturan hoy en la interfaz;
         # quedan en 0 hasta que definas de dónde deben salir.
+        es_cong = self.tipo_conservacion == "congelado"
         return {
             "cdgo_plu": self.producto.get("cdgo_plu", 0),
             "nmbre_plu": self.producto.get("nombre", ""),
             "tpo_lmpza": self.tipo_limpieza_seleccionado or 0,
             "nmro_lte": self.lote,
             "fcha_prdccion": self.fecha_produccion,
-            "fcha_vnce_ref": self.fecha_vencimiento_str,
-            "fcha_vnce_cong": self.fecha_vencimiento_str,
+            "fcha_vnce_ref": None if es_cong else self.fecha_vencimiento_str,
+            "fcha_vnce_cong": self.fecha_vencimiento_str if es_cong else None,
+            #"fcha_vnce_ref": self.fecha_vencimiento_str,
+            #"fcha_vnce_cong": self.fecha_vencimiento_str,
             "fcha_scrfcio": self.fecha_sacrificio,
             "pso_nto": self.peso_neto_kg,
             "pso_tra": 0,

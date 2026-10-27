@@ -31,6 +31,7 @@ from PySide6.QtGui import (
     QPdfWriter,
     QPen,
     QPixmap,
+    QFontMetricsF,
 )
 from repositories.empresa_repository import (
     obtener_ciudad_empresa_db,
@@ -95,7 +96,7 @@ MEDIO_ZEBRA = ""
 ANCHO = ANCHO_MM * 10
 
 # Margen igual en los CUATRO lados, en unidades lógicas (25 = 2,5 mm).
-MARGEN = 54
+MARGEN = 45
 
 QR_SIZE = 170             # tamaño MÁXIMO del QR (se achica en etiquetas bajas)
 SEPARACION_QR = 7
@@ -114,9 +115,14 @@ ALTO_TEXTO_REF = (ALTO_REF - QR_SIZE - MARGEN - SEPARACION_BLOQUES) - MARGEN
 # Si la escala de letra baja de este valor se escribe un aviso en el log.
 ESCALA_MIN_AVISO = 0.5
 
+# Espacio mínimo (unidades lógicas) entre columnas de una misma fila.
+# Si no caben, la fila reduce la letra hasta que quepan.
+SEPARACION_MIN_COLUMNAS = 14
+TAMANO_MIN_COLUMNAS = 12
+
 # Dibuja un marco en el borde de la etiqueta (vista previa e impresión).
 # Útil para comprobar qué borde se corta; dejar en False en producción.
-MARCO_DE_PRUEBA = True
+MARCO_DE_PRUEBA = False
 
 # Guarda debug_etiqueta.png y ultimo_envio.zpl en la carpeta de logs cada
 # vez que se imprime por ZPL. Útil para probar; poner False en producción.
@@ -131,6 +137,10 @@ RECOMENDACION_USO = "consumase bien cocido a temperatura superior de 70°C"
 CODIGO_PROCESO_DEFAULT = socket.gethostname()
 
 RUTA_ICONOS = ruta_recurso(os.path.join("assets", "icons"))
+ETIQUETA_VENCIMIENTO = {
+    "refrigerado": "F.Vto.Refrigeracion:",
+    "congelado": "F.Vto.Congelacion:",
+}
 
 _consecutivo_repository = ConsecutivoRepository()
 
@@ -301,7 +311,6 @@ def _generar_contenido_qr(
 # ======================================================================
 # DATOS DE LA ETIQUETA
 # ======================================================================
-
 @dataclass
 class DatosEtiquetaFrescas:
     # Producto
@@ -340,6 +349,9 @@ class DatosEtiquetaFrescas:
     qr_izquierda: Optional[str]
     qr_derecha: Optional[str]
 
+    # Tipo de conservación del vencimiento: "refrigerado" | "congelado"
+    tipo_conservacion: str = "refrigerado"
+
 
 def construir_datos_etiqueta(
     producto,
@@ -354,11 +366,16 @@ def construir_datos_etiqueta(
     fecha_sacrificio: Optional[date] = None,
     nom_impr_etiq: Optional[str] = None,
     numEspecie: Optional[int] = None,
+    tipo_conservacion: str = "refrigerado",      # NUEVO
 ) -> DatosEtiquetaFrescas:
 
     fecha_produccion = fechas._asegurar_date(fecha_produccion)
     fecha_sacrificio = fechas._asegurar_date(fecha_sacrificio)
     fecha_vencimiento_str = fechas._asegurar_date(fecha_vencimiento_str)
+
+    # Valor inválido o vacío -> refrigerado
+    if tipo_conservacion not in ETIQUETA_VENCIMIENTO:
+        tipo_conservacion = "refrigerado"
 
     # El peso se obtiene UNA sola vez para que el QR y el texto de la
     # etiqueta muestren exactamente el mismo valor.
@@ -369,8 +386,8 @@ def construir_datos_etiqueta(
     )
 
     logger.info(
-        "Construyendo etiqueta: plu=%s lote=%s peso=%s",
-        producto.cdgo_plu, lote, peso_neto_kg,
+        "Construyendo etiqueta: plu=%s lote=%s peso=%s conservacion=%s",
+        producto.cdgo_plu, lote, peso_neto_kg, tipo_conservacion,
     )
 
     contenido_qr = _generar_contenido_qr(
@@ -414,6 +431,7 @@ def construir_datos_etiqueta(
 
         qr_izquierda=contenido_qr,
         qr_derecha=contenido_qr,
+        tipo_conservacion=tipo_conservacion,
     )
 
 
@@ -459,6 +477,7 @@ def crear_datos_ejemplo() -> DatosEtiquetaFrescas:
 
         qr_izquierda=contenido_qr,
         qr_derecha=contenido_qr,
+
     )
 
 
@@ -522,6 +541,28 @@ def _dibujar_contenido_etiqueta(
         font.setPixelSize(max(1, round(tamano * esc)))
         return font
 
+    def segmentos(contenido, negrita=False) -> list:
+        """
+        Convierte el contenido en una lista de segmentos (texto, negrita).
+
+        - "texto"                     -> [("texto", negrita)]
+        - ("Titulo:", "valor")        -> [("Titulo:", True), ("valor", False)]
+        - [("a", True), ("b", False)] -> se usa tal cual
+        """
+        if isinstance(contenido, list):
+            return [(str(t), bool(b)) for t, b in contenido]
+        if isinstance(contenido, tuple):
+            titulo, valor = contenido
+            return [(str(titulo), True), (str(valor), False)]
+        return [(str(contenido), negrita)]
+
+    def ancho_texto(contenido, tamano, negrita=False) -> float:
+        """Ancho real (unidades lógicas) que ocupa el contenido."""
+        return sum(
+            QFontMetricsF(fuente(tamano, b)).horizontalAdvance(t)
+            for t, b in segmentos(contenido, negrita)
+        )
+
     def texto(
         x, y, ancho, alto_caja, contenido,
         tamano=20,
@@ -529,10 +570,36 @@ def _dibujar_contenido_etiqueta(
         alineacion=Qt.AlignmentFlag.AlignLeft,
     ):
         # tamano y alto_caja son valores de DISEÑO: aquí se escalan.
-        painter.setFont(fuente(tamano, negrita))
-        painter.drawText(
-            QRectF(x, y, ancho, alto_caja * esc), alineacion, str(contenido)
-        )
+        alto_px = alto_caja * esc
+        segs = segmentos(contenido, negrita)
+
+        # Un solo segmento: se deja que Qt alinee dentro de la caja.
+        if len(segs) == 1:
+            t, b = segs[0]
+            painter.setFont(fuente(tamano, b))
+            painter.drawText(QRectF(x, y, ancho, alto_px), alineacion, t)
+            return
+
+        # Varios segmentos: se dibujan uno a continuación del otro.
+        medidos = [
+            (t, fuente(tamano, b), QFontMetricsF(fuente(tamano, b)))
+            for t, b in segs
+        ]
+        total = sum(m.horizontalAdvance(t) for t, _, m in medidos)
+
+        if alineacion & Qt.AlignmentFlag.AlignRight:
+            cursor = x + ancho - total
+        elif alineacion & Qt.AlignmentFlag.AlignHCenter:
+            cursor = x + (ancho - total) / 2
+        else:
+            cursor = x
+
+        izq = Qt.AlignmentFlag.AlignLeft
+        for t, f, m in medidos:
+            w = m.horizontalAdvance(t)
+            painter.setFont(f)
+            painter.drawText(QRectF(cursor, y, w + 4, alto_px), izq, t)
+            cursor += w
 
     def fila_dos_columnas(
         y, alto_fila, izquierda, derecha,
@@ -549,22 +616,39 @@ def _dibujar_contenido_etiqueta(
             alineacion=Qt.AlignmentFlag.AlignRight,
         )
 
-    def fila_tres_columnas(y, alto_fila, izquierda, centro, derecha, tamano=24):
-        """Tres textos en una fila: izquierda | centro | derecha."""
-        ancho_col = ancho_full / 3
-        alineaciones = (
-            Qt.AlignmentFlag.AlignLeft,
-            Qt.AlignmentFlag.AlignCenter,
-            Qt.AlignmentFlag.AlignRight,
-        )
-        for i, (contenido, alineacion) in enumerate(
-            zip((izquierda, centro, derecha), alineaciones)
-        ):
-            texto(
-                x_full + ancho_col * i, y, ancho_col, alto_fila, contenido,
-                tamano=tamano,
-                alineacion=alineacion,
+    def fila_columnas(y, alto_fila, columnas, tamano=24):
+        """
+        Reparte N textos en una fila SIN que se monten:
+        el primero queda pegado a la izquierda, el último a la derecha y el
+        espacio sobrante se reparte en partes iguales entre ellos.
+        Si no caben con una separación mínima, la letra de la fila se
+        reduce hasta que quepan.
+        """
+        n = len(columnas)
+        if n == 0:
+            return
+
+        t = tamano
+        while True:
+            anchos = [ancho_texto(c, t) for c in columnas]
+            libre = ancho_full - sum(anchos)
+            separacion = libre / (n - 1) if n > 1 else 0
+            if separacion >= SEPARACION_MIN_COLUMNAS or t <= TAMANO_MIN_COLUMNAS:
+                break
+            t -= 1
+
+        if t != tamano:
+            logger.debug("Fila de columnas: letra reducida de %d a %d", tamano, t)
+        if separacion < 0:
+            logger.warning(
+                "La fila no cabe ni con letra %d (faltan %.0f unidades)",
+                t, -separacion,
             )
+
+        x = x_full
+        for contenido, w in zip(columnas, anchos):
+            texto(x, y, w + 4, alto_fila, contenido, tamano=t)
+            x += w + separacion
 
     def dibujar_logo_centrado(pixmap: Optional[QPixmap], x, y, ancho, alto_area):
         """
@@ -621,27 +705,30 @@ def _dibujar_contenido_etiqueta(
     )
     fila_dos_columnas(
         y, 34,
-        f"Fecha Empacado: {fecha_empaque}",
-        f"Contenido Neto:{peso_texto}",
-        tamano=23,
-        negrita_der=True,
+        ("Fecha Empacado:", f" {fecha_empaque}"),
+        ("Contenido Neto:", peso_texto),
+        tamano=24,
         prop_izq=0.42,
     )
     y += saltos[1]
 
-    # Fecha beneficio | Lote (+ nivel) | Fecha de vencimiento.
-    nivel_texto = (
-        f"   Nv:{datos.nivel_limpieza}"
-        if datos.nivel_limpieza is not None
-        else ""
+    # Fecha beneficio | Lote | Nivel (si existe) | Fecha de vencimiento.
+    columnas = [
+        ("Fecha Beneficio:", f" {datos.fecha_sacrificio}"),
+        ("Lote:", f" {datos.lote}"),
+    ]
+    if datos.nivel_limpieza is not None:
+        columnas.append(("Nv:", f" {datos.nivel_limpieza}"))
+        
+    columnas.append(
+        (
+            ETIQUETA_VENCIMIENTO.get(datos.tipo_conservacion, "F.Vto:"),
+            f" {_formatear_fecha(datos.fecha_vencimiento_str)}",
+            #"F.Vto.Refrigeracion:",
+            #f" {_formatear_fecha(datos.fecha_vencimiento_str)}",
+        )
     )
-    fila_tres_columnas(
-        y, 34,
-        f"Fecha Beneficio: {datos.fecha_sacrificio}",
-        f"Lote:{datos.lote}{nivel_texto}",
-        f"F.Vto.Refrigeracion: {_formatear_fecha(datos.fecha_vencimiento_str)}",
-        tamano=20,
-    )
+    fila_columnas(y, 34, columnas, tamano=23)
     y += saltos[2]
 
     # Fabricante.

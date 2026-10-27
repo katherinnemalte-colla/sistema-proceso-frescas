@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # ======================================================================
 
 # Por debajo de este nivel de gris (0-255) un punto se imprime en negro.
-UMBRAL_NEGRO = 128
+UMBRAL_NEGRO = 145
 
 # Sensor de papel que manda el programa ("" = NO enviar ^MN y respetar lo
 # configurado en la impresora). Valores: "Y" gap, "M" marca negra, "N" continuo.

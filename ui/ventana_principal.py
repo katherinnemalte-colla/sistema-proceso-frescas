@@ -95,8 +95,6 @@ class VentanaPrincipal(QWidget):
         # CONFIGURACIÓN VENTANA
         # ----------------------------------------------------------
 
-        self.setWindowTitle("Etiquetas para Piezas + Canastillas- 2 en 1")
-
         self.setStyleSheet("""
             QWidget {
                 background-color: #EEF5F5;
@@ -428,7 +426,7 @@ class VentanaPrincipal(QWidget):
         layout_panel.addWidget(self._etiqueta_tipo_pieza)
 
         self._fila_botones_tipo_pieza = QHBoxLayout()
-        self._fila_botones_tipo_pieza.setSpacing(escalar(16))
+        self._fila_botones_tipo_pieza.setSpacing(escalar(26))
         self._fila_botones_tipo_pieza.setAlignment(Qt.AlignCenter)
 
         layout_panel.addLayout(self._fila_botones_tipo_pieza)
@@ -927,6 +925,7 @@ class VentanaPrincipal(QWidget):
     # TIPO DE PIEZA ELEGIDO (DELANTERO / TRASERO)
     # ==============================================================
     def _tipo_pieza_elegido(self, tpo_pza, nombre_tipo_pieza):
+     with medir("lotes: consulta al repositorio especie seleccionada"):
         if self.especie_seleccionada not in TIPOS_PIEZA_POR_ESPECIE:
             return
         self._avanzar_a_seleccion_producto(
@@ -1099,7 +1098,6 @@ class VentanaPrincipal(QWidget):
             # ------------------------------------------------------
             # LIMPIAR COMBO
             # ------------------------------------------------------
-            with medir("lotes: llenar el combo"):
                 self.campo_lote.clear()
 
             # ------------------------------------------------------
