@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
-    QWidget, QLabel, QPushButton, QFrame, QGridLayout,
-    QVBoxLayout, QHBoxLayout, QDateEdit, QButtonGroup, QSizePolicy,
-    QScrollArea
+    QWidget, QLabel, QPushButton, QFrame,
+    QVBoxLayout, QHBoxLayout, QButtonGroup, QSizePolicy,
+    QScrollArea,QCheckBox,QComboBox,QDialog, QMessageBox, QPushButton
 )
 from datetime import timedelta, date
 from typing import Optional
@@ -19,18 +19,29 @@ from repositories.etiquetas.frescas_100x45 import (
 )
 from services.bascula_service import bascula_service
 import shiboken6
-from PySide6.QtWidgets import QCheckBox
+import logging
 from PySide6.QtPrintSupport import QPrinterInfo
-from PySide6.QtWidgets import QComboBox
 from services.hstrco_psje_service import registrar_historico_pesaje
 from repositories.hstrco_psje_repository import  guardar_historico_pesaje,obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, marcar_historico_reimpreso
-from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton
 from ui.dialogo_ajuste_etiqueta import DialogoAjusteEtiqueta
+from repositories.obtener_tipo_limpieza_repository import normalizar_empresa
 
 ANCHO_CONTENIDO = 1150  # valor BASE, se escala con escalar() al usarlo
 COLOR_PRIMARIO = "#1a6b6b"
 COLOR_PRIMARIO_OSCURO = "#134f4f"
+logger = logging.getLogger(__name__)
+def _linea_horizontal() -> QFrame:
+    linea = QFrame()
+    linea.setFixedHeight(1)
+    linea.setStyleSheet("background-color: #E3EAEB; border: none;")
+    return linea
 
+
+def _linea_vertical() -> QFrame:
+    linea = QFrame()
+    linea.setFixedWidth(1)
+    linea.setStyleSheet("background-color: #E3EAEB; border: none;")
+    return linea
 
 class FichaTecnica(QWidget):
     mensaje_temporal = Signal(str, str)   # (texto, tipo: "error" | "info")
@@ -67,12 +78,11 @@ class FichaTecnica(QWidget):
         self.lote = int(lote)
         self.tpo_pza = tpo_pza
         self.nombre_tipo_pieza = nombre_tipo_pieza
-
         self.seleccion_de_producto = None
         self.peso_neto_kg = bascula_service.obtener_peso_neto()
         self.fecha_sacrificio = fechas._asegurar_date(fecha_sacrificio)
         self.nom_impr_etiq = nom_impr_etiq
-        self.empresa = empresa
+        self.empresa = normalizar_empresa(empresa)
         self.fecha_vencimiento_str = fechas._asegurar_date(fecha_vencimiento_str)
         self._tipo_conservacion_forzado = tipo_conservacion   # NUEVO: lo que mandó la pantalla
         self.tipo_conservacion = tipo_conservacion or "refrigerado"   # NUEVO: valor inicial, antes de _crear_interfaz()
@@ -148,28 +158,30 @@ class FichaTecnica(QWidget):
         fecha_vencimiento_congelacion = calcular(dias_cong)
         
         return dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion
-
+    
+    def _crear_etiqueta(self, texto, color="#222", tamano=13, negrita=False) -> QLabel:
+        etiqueta = QLabel(texto)
+        etiqueta.setStyleSheet(
+            f"color: {color}; font-size: {escalar_fuente(tamano)}px; "
+            f"font-weight: {'700' if negrita else '400'}; "
+            f"background: transparent; border: none;"
+        )
+        return etiqueta
     # ==============================================================
     # INTERFAZ
     # ==============================================================
     def _crear_interfaz(self):
-        # ------------------------------------------------------------
-        # Contenido real (todo lo que va dentro del scroll)
-        # ------------------------------------------------------------
         layout = QVBoxLayout()
-        layout.setContentsMargins(
-            escalar(25), escalar(20), escalar(25), escalar(20)
-        )
-        layout.setSpacing(escalar(16))
+        layout.setContentsMargins(escalar(12), escalar(12), escalar(12), escalar(12))
+        layout.setSpacing(escalar(10))
 
         contenedor = QWidget()
-        
         contenedor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         contenedor.setLayout(layout)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setWidget(contenedor)          # el contenedor va directo al scroll
+        scroll.setWidget(contenedor)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         
         layout_externo = QVBoxLayout(self)
@@ -204,65 +216,66 @@ class FichaTecnica(QWidget):
         layout.addLayout(encabezado)
 
         # ----------------------------------------------------------
-        # FILA: imagen principal + información del producto
+        # FILA SUPERIOR: imagen grande | (información + galería)
         # ----------------------------------------------------------
         fila_superior = QHBoxLayout()
-        fila_superior.setSpacing(escalar(16))
+        fila_superior.setSpacing(escalar(12))
 
-        fila_superior.addWidget(self._crear_imagen_principal())
-        fila_superior.addWidget(self._crear_info_producto())
+        fila_superior.addWidget(self._crear_imagen_principal(), 36)
+
+        columna_derecha = QVBoxLayout()
+        columna_derecha.setSpacing(escalar(10))
+        columna_derecha.addWidget(self._crear_info_producto())
+        columna_derecha.addWidget(self._crear_galeria_imagenes())
+        fila_superior.addLayout(columna_derecha, 64)
 
         layout.addLayout(fila_superior)
 
         # ----------------------------------------------------------
-        # IMÁGENES DEL PRODUCTO (galería numerada)
+        # FILA MEDIA: (limpieza + báscula) | (vista previa + consecutiva)
         # ----------------------------------------------------------
-        layout.addWidget(self._crear_galeria_imagenes())
+        fila_media = QHBoxLayout()
+        fila_media.setSpacing(escalar(16))
 
-        # ----------------------------------------------------------
-        # TIPO DE LIMPIEZA
-        # ----------------------------------------------------------
-        #layout.addWidget(self._crear_seccion_tipo_limpieza())
+        columna_izquierda = QVBoxLayout()
+        columna_izquierda.setSpacing(escalar(10))
         self._seccion_limpieza = self._crear_seccion_tipo_limpieza()
-        layout.addWidget(self._seccion_limpieza)
-        # ----------------------------------------------------------
-        # FILA: báscula + datos adicionales
-        # ----------------------------------------------------------
-        fila_inferior = QHBoxLayout()
-        fila_inferior.setSpacing(escalar(16))
+        columna_izquierda.addWidget(self._seccion_limpieza)
+        columna_izquierda.addWidget(self._crear_bascula(), 1)
 
-        fila_inferior.addWidget(self._crear_bascula(),1)
-        fila_inferior.addWidget(self._crear_datos_adicionales(),1)
-
-        layout.addLayout(fila_inferior)
+        fila_media.addLayout(columna_izquierda, 1)
+        fila_media.addWidget(self._crear_datos_adicionales(), 1)
+        layout.addLayout(fila_media, 1)
 
         # Los estilos se construyen aquí porque el factor de escala temporal está activo
         base = (f"font-size: {escalar_fuente(13)}px; font-weight: bold; "
                 f"border-radius: {escalar(6)}px; padding: {escalar(6)}px;")
         self._estilos_mensaje = {
-            "error": f"background-color: #FDECEA; color: #B00020; {base}",  
+            "error": f"background-color: #FDECEA; color: #B00020; {base}",
             "info":  f"background-color: #E8F5E9; color: #1B5E20; {base}",
         }
-        
+
         self.lbl_mensaje = QLabel("")
         self.lbl_mensaje.setAlignment(Qt.AlignCenter)
         self.lbl_mensaje.setMinimumHeight(escalar(36))  # reserva espacio: los botones no "saltan"
         layout.addWidget(self.lbl_mensaje)
+
         # ----------------------------------------------------------
-        # BOTONES: Ir a inicio + Guardar peso
+        # BOTONES: Ir a inicio | Imprime
         # ----------------------------------------------------------
         fila_botones = QHBoxLayout()
-        fila_botones.setSpacing(escalar(12))
+        fila_botones.setSpacing(escalar(16))
 
         boton_inicio = QPushButton("Ir a inicio")
-        boton_inicio.setFixedHeight(escalar(50))
+        boton_inicio.setFixedHeight(escalar(56))
+        boton_inicio.setCursor(Qt.PointingHandCursor)
         boton_inicio.setStyleSheet(f"""
             QPushButton {{
                 background-color: white;
                 color: #115E67;
                 border: 1px solid #D9E2E4;
-                border-radius: 0px;
-                font-size: {escalar_fuente(15)}px;
+                border-radius: {escalar(4)}px;
+                font-size: {escalar_fuente(16)}px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -272,40 +285,40 @@ class FichaTecnica(QWidget):
         boton_inicio.clicked.connect(self._volver_a_inicio)
 
         self.boton_guardar = QPushButton("Imprime")
-        self.boton_guardar.setFixedHeight(escalar(50))
+        self.boton_guardar.setFixedHeight(escalar(56))
+        self.boton_guardar.setCursor(Qt.PointingHandCursor)
         self.boton_guardar.setStyleSheet(f"""
             QPushButton {{
-                background-color: #115E67;
+                background-color: {COLOR_PRIMARIO};
                 color: white;
                 border: none;
-                border-radius: 0px;
-                font-size: {escalar_fuente(15)}px;
+                border-radius: {escalar(4)}px;
+                font-size: {escalar_fuente(16)}px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background-color: #0D4D55;
+                background-color: {COLOR_PRIMARIO_OSCURO};
             }}
         """)
-
         self.boton_guardar.clicked.connect(self._accion_boton_principal)
 
-        fila_botones.addWidget(boton_inicio)
-        fila_botones.addWidget(self.boton_guardar)
+        fila_botones.addWidget(boton_inicio, 1)
+        fila_botones.addWidget(self.boton_guardar, 1)
         layout.addLayout(fila_botones)
-        #self._cargar_historicos_pesaje()
-
     # ==============================================================
     # IMAGEN PRINCIPAL
     # ==============================================================
     def _crear_imagen_principal(self) -> QFrame:
         marco = QFrame()
-        marco.setFixedSize(escalar(300), escalar(260))
-        marco.setStyleSheet("""
-            QFrame {
+        marco.setObjectName("tarjeta")
+        marco.setMinimumSize(escalar(420), escalar(330))
+        marco.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        marco.setStyleSheet(f"""
+            QFrame#tarjeta {{
                 background-color: white;
                 border: 1px solid #D9E2E4;
-                border-radius: 12px;
-            }
+                border-radius: {escalar(4)}px;
+            }}
         """)
 
         layout = QVBoxLayout(marco)
@@ -313,6 +326,7 @@ class FichaTecnica(QWidget):
 
         etiqueta_imagen = QLabel()
         etiqueta_imagen.setAlignment(Qt.AlignCenter)
+        etiqueta_imagen.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
 
         imagen_raw = self.producto.get("imagen")
         imagen_bytes = self._normalizar_imagen_bytes(imagen_raw)
@@ -320,13 +334,16 @@ class FichaTecnica(QWidget):
         pixmap = QPixmap()
         if imagen_bytes and pixmap.loadFromData(imagen_bytes):
             pixmap = pixmap.scaled(
-                escalar(280), escalar(240),
+                escalar(580), escalar(330),
                 Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
             etiqueta_imagen.setPixmap(pixmap)
+            etiqueta_imagen.setStyleSheet("background: transparent; border: none;")
         else:
             etiqueta_imagen.setText("Sin imagen")
-            etiqueta_imagen.setStyleSheet(f"color: #999; font-size: {escalar_fuente(13)}px;")
+            etiqueta_imagen.setStyleSheet(
+                f"color: #999; font-size: {escalar_fuente(33)}px; background: transparent; border: none;"
+            )
 
         layout.addWidget(etiqueta_imagen)
         return marco
@@ -351,12 +368,13 @@ class FichaTecnica(QWidget):
     # ==============================================================
     def _crear_info_producto(self) -> QFrame:
         marco = QFrame()
-        marco.setStyleSheet("""
-            QFrame {
+        marco.setObjectName("tarjeta")
+        marco.setStyleSheet(f"""
+            QFrame#tarjeta {{
                 background-color: white;
                 border: 1px solid #D9E2E4;
-                border-radius: 12px;
-            }
+                border-radius: {escalar(4)}px;
+            }}
         """)
         resultado_sacrificio = ObtenerTipoLimpiezaRepository.obtener_fecha_sacrificio(
             self, self.lote, self.numEspecie
@@ -366,12 +384,15 @@ class FichaTecnica(QWidget):
         self.nom_impr_etiq = resultado_sacrificio.nom_impr_etiq if resultado_sacrificio else None
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(escalar(20), escalar(16), escalar(20), escalar(16))
-        layout.setSpacing(escalar(10))
+        layout.setContentsMargins(escalar(8), escalar(8), escalar(8), escalar(8))
+        layout.setSpacing(escalar(6))
 
-        titulo = QLabel("Información del producto")
+        # Título dentro de una banda clara
+        titulo = QLabel(f"INFORMACION DE {self.producto.get("nombre", "-")}")
         titulo.setStyleSheet(
-            f"font-size: {escalar_fuente(15)}px; font-weight: bold; color: #115E67;"
+            f"font-size: {escalar_fuente(16)}px; font-weight: bold; color: #115E67; "
+            f"background-color: #E8F0EF; border: none; "
+            f"border-radius: {escalar(4)}px; padding: {escalar(6)}px {escalar(10)}px;"
         )
         layout.addWidget(titulo)
 
@@ -399,105 +420,137 @@ class FichaTecnica(QWidget):
                 if fecha_vencimiento_refrigeracion else "-"
             )
             dias_vencimiento = dias_ref
-            
+
         def formatear_fecha(fecha, formato="%d/%m/%Y", valor_defecto="N/A") -> str:
             if fecha is None:
                 return valor_defecto
             return fecha.strftime(formato)
 
         datos = [
-            [("PLU:", self.producto.get("cdgo_plu", "-")), ("Producto:", self.producto.get("nombre", "-"))],
-            [("Especie:", self.especie), ("Empresa:", self.empresa)],
-            [("Fecha Empacado:", self.fecha_produccion.strftime("%d/%m/%Y"))],
-            [("Fecha Beneficio:", formatear_fecha(self.fecha_sacrificio))],
-            [(etiqueta_vencimiento, fecha_vencimiento_str)],
-            [("Días Vence:", dias_vencimiento if dias_vencimiento is not None else "-")],
+            [("PLU:", self.producto.get("cdgo_plu", "-")), ("Fecha Empacado:", self.fecha_produccion.strftime("%d/%m/%Y"))],
+            [("Especie:", self.especie), ("Fecha Beneficio:", formatear_fecha(self.fecha_sacrificio))],
+            [("Empresa:", self.empresa), (etiqueta_vencimiento, fecha_vencimiento_str), ("Días Vence:", dias_vencimiento if dias_vencimiento is not None else "-")],
         ]
         if self.tpo_pza is not None and self.nombre_tipo_pieza:
             datos.append([("Tipo de pieza:", self.nombre_tipo_pieza)])
 
+        # --- Distribución visual: columna izq | columna der, y fila inferior ---
+        def crear_celda(etiqueta_texto, valor_texto, ancho_etiqueta=150) -> QFrame:
+            celda = QFrame()
+            celda.setObjectName("celda")
+            celda.setStyleSheet(
+                "QFrame#celda { background: transparent; border: none; "
+                "border-bottom: 1px solid #E3EAEB; }"
+            )
+            fila = QHBoxLayout(celda)
+            fila.setContentsMargins(escalar(8), escalar(6), escalar(8), escalar(6))
+            etiqueta = self._crear_etiqueta(etiqueta_texto, "#4F7F84", 15)
+            etiqueta.setMinimumWidth(escalar(ancho_etiqueta))
+            valor = self._crear_etiqueta(str(valor_texto), "#115E67", 17, True)
+            valor.setWordWrap(True)
+            fila.addWidget(etiqueta)
+            fila.addWidget(valor, stretch=1)
+            return celda
+
+        celdas_izq, celdas_der, celdas_inf = [], [], []
         for grupo in datos:
-            fila = QHBoxLayout()
-            for etiqueta_texto, valor_texto in grupo:
-                etiqueta = QLabel(etiqueta_texto)
-                etiqueta.setMinimumWidth(escalar(90))
-                etiqueta.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-                etiqueta.setStyleSheet(f"color: #666; font-size: {escalar_fuente(13)}px;")
+            if len(grupo) >= 3:
+                celdas_izq.append(grupo[0])
+                celdas_inf.extend(grupo[1:])
+            elif len(grupo) == 2:
+                celdas_izq.append(grupo[0])
+                celdas_der.append(grupo[1])
+            else:
+                celdas_izq.append(grupo[0])
 
-                valor = QLabel(str(valor_texto))
-                valor.setWordWrap(True)
-                valor.setStyleSheet(
-                    f"color: #222; font-size: {escalar_fuente(13)}px; font-weight: bold;"
+        cuerpo = QHBoxLayout()
+        cuerpo.setSpacing(escalar(10))
+
+        columna_izq = QVBoxLayout()
+        columna_izq.setSpacing(0)
+        for etiqueta_texto, valor_texto in celdas_izq:
+            columna_izq.addWidget(crear_celda(etiqueta_texto, valor_texto))
+        columna_izq.addStretch()
+
+        columna_der = QVBoxLayout()
+        columna_der.setSpacing(0)
+        for etiqueta_texto, valor_texto in celdas_der:
+            columna_der.addWidget(crear_celda(etiqueta_texto, valor_texto, 170))
+        columna_der.addStretch()
+
+        cuerpo.addLayout(columna_izq, 1)
+        cuerpo.addWidget(_linea_vertical())
+        cuerpo.addLayout(columna_der, 1)
+        layout.addLayout(cuerpo)
+
+        if celdas_inf:
+            fila_inferior = QHBoxLayout()
+            fila_inferior.setSpacing(escalar(10))
+            for i, (etiqueta_texto, valor_texto) in enumerate(celdas_inf):
+                if i > 0:
+                    fila_inferior.addWidget(_linea_vertical())
+                fila_inferior.addWidget(
+                    crear_celda(etiqueta_texto, valor_texto, 200 if i == 0 else 110),
+                    3 if i == 0 else 2,
                 )
+            layout.addLayout(fila_inferior)
 
-                fila.addWidget(etiqueta)
-                fila.addWidget(valor, stretch=1)
-
-            layout.addLayout(fila)
-        layout.addStretch()
         return marco
 
-    # ==============================================================
-    # GALERÍA DE IMÁGENES
-    # ==============================================================
     def _crear_galeria_imagenes(self) -> QFrame:
-        marco = QFrame()
-        marco.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #D9E2E4;
-                border-radius: 12px;
-            }
-        """)
-
-        layout_externo = QVBoxLayout(marco)
-        layout_externo.setContentsMargins(escalar(16), escalar(12), escalar(16), escalar(16))
-        layout_externo.setSpacing(escalar(10))
-
-        titulo = QLabel("Imágenes del producto")
-        titulo.setStyleSheet(
-            f"font-size: {escalar_fuente(14)}px; font-weight: bold; color: #115E67;"
-        )
-        layout_externo.addWidget(titulo)
-
-        fila_miniaturas = QHBoxLayout()
-        fila_miniaturas.setSpacing(escalar(12))
-
-        if self.producto_completo is not None:
-            imagenes_extra = [
-                self.producto_completo.con_arch_2,
-                self.producto_completo.con_arch_3,
-                self.producto_completo.con_arch_4,
-                self.producto_completo.con_arch_5,
-                self.producto_completo.con_arch_6,
-            ]
-        else:
-            imagenes_extra = [None, None, None, None, None]
-
-        for numero, imagen_bytes in enumerate(imagenes_extra, start=2):
-            fila_miniaturas.addWidget(self._crear_miniatura(numero, imagen_bytes))
-
-        fila_miniaturas.addStretch()
-        layout_externo.addLayout(fila_miniaturas)
-
-        return marco
-
+           marco = QFrame()
+           marco.setObjectName("tarjeta")
+           marco.setStyleSheet(f"""
+               QFrame#tarjeta {{
+                   background-color: white;
+                   border: 1px solid #D9E2E4;
+                   border-radius: {escalar(4)}px;
+               }}
+           """)
+   
+           layout_externo = QVBoxLayout(marco)
+           layout_externo.setContentsMargins(escalar(16), escalar(10), escalar(16), escalar(12))
+           layout_externo.setSpacing(escalar(8))
+   
+           fila_miniaturas = QHBoxLayout()
+           fila_miniaturas.setSpacing(escalar(10))
+   
+           if self.producto_completo is not None:
+               imagenes_extra = [
+                   self.producto_completo.con_arch_3,
+                   self.producto_completo.con_arch_4,
+                   self.producto_completo.con_arch_5,
+                   self.producto_completo.con_arch_6,
+               ]
+           else:
+               imagenes_extra = [None, None, None, None, None]
+   
+           for numero, imagen_bytes in enumerate(imagenes_extra, start=2):
+               fila_miniaturas.addWidget(self._crear_miniatura(numero, imagen_bytes))
+   
+           #fila_miniaturas.addStretch()
+           layout_externo.addLayout(fila_miniaturas)
+   
+           return marco
+   
     def _crear_miniatura(self, numero: int, imagen_bytes) -> QFrame:
         contenedor = QFrame()
-        contenedor.setFixedSize(escalar(90), escalar(90))
-        contenedor.setStyleSheet("""
-            QFrame {
-                background-color: #F5F8F8;
-                border: 1px solid #D9E2E4;
-                border-radius: 10px;
-            }
-        """)
+        contenedor.setObjectName("miniatura")
+        contenedor.setFixedHeight(escalar(115))
+        contenedor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         layout = QVBoxLayout(contenedor)
         layout.setContentsMargins(escalar(4), escalar(4), escalar(4), escalar(4))
 
         etiqueta = QLabel()
         etiqueta.setAlignment(Qt.AlignCenter)
+        etiqueta.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+
+        estilo_numero = (
+            f"color: #8A9A9C; font-size: {escalar_fuente(20)}px; font-weight: bold; "
+            f"background: transparent; border: none;"
+        )
+        fondo = "#EEF3F3"   # casilla vacía
 
         datos = self._normalizar_imagen_bytes(imagen_bytes)
 
@@ -505,114 +558,119 @@ class FichaTecnica(QWidget):
             pixmap = QPixmap()
             if pixmap.loadFromData(datos):
                 pixmap = pixmap.scaled(
-                    escalar(80), escalar(80),
+                    escalar(200), escalar(105),
                     Qt.KeepAspectRatio, Qt.SmoothTransformation
                 )
                 etiqueta.setPixmap(pixmap)
+                etiqueta.setStyleSheet("background: transparent; border: none;")
+                fondo = "white"
             else:
                 etiqueta.setText(str(numero))
-                etiqueta.setStyleSheet(
-                    f"color: #999; font-size: {escalar_fuente(20)}px; font-weight: bold;"
-                )
+                etiqueta.setStyleSheet(estilo_numero)
         else:
             etiqueta.setText(str(numero))
-            etiqueta.setStyleSheet(
-                f"color: #999; font-size: {escalar_fuente(20)}px; font-weight: bold;"
-            )
+            etiqueta.setStyleSheet(estilo_numero)
+
+        contenedor.setStyleSheet(f"""
+            QFrame#miniatura {{
+                background-color: {fondo};
+                border: 1px solid #D9E2E4;
+                border-radius: {escalar(6)}px;
+            }}
+        """)
 
         layout.addWidget(etiqueta)
         return contenedor
-
-    # ==============================================================
-    # TIPO DE LIMPIEZA
-    # ==============================================================
+   
+       # ==============================================================
+       # TIPO DE LIMPIEZA
+       # ==============================================================
     def _crear_seccion_tipo_limpieza(self) -> QFrame:
-        marco = QFrame()
-        marco.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #D9E2E4;
-                border-radius: 12px;
-            }
-        """)
-
-        layout = QVBoxLayout(marco)
-        layout.setContentsMargins(escalar(16), escalar(12), escalar(16), escalar(16))
-        layout.setSpacing(escalar(10))
-
-        titulo = QLabel("Nivel de Limpieza")
-        titulo.setStyleSheet(
-            f"font-size: {escalar_fuente(14)}px; font-weight: bold; color: #115E67;"
-        )
-        layout.addWidget(titulo)
-
-        self._contenedor_botones_limpieza = QHBoxLayout()
-        self._contenedor_botones_limpieza.setSpacing(escalar(10))
-        layout.addLayout(self._contenedor_botones_limpieza)
-
-        fila_paginacion = QHBoxLayout()
-        fila_paginacion.setSpacing(escalar(6))
-
-        self._btn_primera = QPushButton("<<")
-        self._btn_anterior = QPushButton("<")
-        self._lbl_pagina = QLabel("")
-        self._btn_siguiente = QPushButton(">")
-        self._btn_ultima = QPushButton(">>")
-
-        for boton in (self._btn_primera, self._btn_anterior, self._btn_siguiente, self._btn_ultima):
-            boton.setCursor(Qt.PointingHandCursor)
-            boton.setFixedWidth(escalar(36))
-            boton.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: white;
-                    color: #115E67;
-                    border: 1px solid #D9E2E4;
-                    border-radius: {escalar(6)}px;
-                    font-weight: 600;
-                    font-size: {escalar_fuente(13)}px;
-                }}
-                QPushButton:hover {{ background-color: #EAF4F5; }}
-                QPushButton:disabled {{ color: #BBB; border-color: #EEE; }}
-            """)
-
-        self._lbl_pagina.setAlignment(Qt.AlignCenter)
-        self._lbl_pagina.setStyleSheet(f"color: #115E67; font-size: {escalar_fuente(12)}px;")
-
-        self._btn_primera.clicked.connect(lambda: self._ir_a_pagina(0))
-        self._btn_anterior.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza - 1))
-        self._btn_siguiente.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza + 1))
-        self._btn_ultima.clicked.connect(lambda: self._ir_a_pagina(self._total_paginas_limpieza - 1))
-
-        fila_paginacion.addStretch()
-        fila_paginacion.addWidget(self._btn_primera)
-        fila_paginacion.addWidget(self._btn_anterior)
-        fila_paginacion.addWidget(self._lbl_pagina)
-        fila_paginacion.addWidget(self._btn_siguiente)
-        fila_paginacion.addWidget(self._btn_ultima)
-        fila_paginacion.addStretch()
-        layout.addLayout(fila_paginacion)
-
-        try:
-            repositorio_limpieza = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
-            self._tipos_limpieza = repositorio_limpieza.obtener_tipos_limpieza()
-        except Exception as e:
-            print("No fue posible cargar tipos de limpieza:", e)
-            self._tipos_limpieza = []
-
-        self._grupo_limpieza = QButtonGroup(self)
-        self._grupo_limpieza.setExclusive(True)
-        self._grupo_limpieza.buttonClicked.connect(self._tipo_limpieza_elegido)
-
-        self._tamano_pagina_limpieza = 8
-        self._pagina_actual_limpieza = 0
-        self._total_paginas_limpieza = max(
-            1, -(-len(self._tipos_limpieza) // self._tamano_pagina_limpieza)
-        )
-
-        self._ir_a_pagina(0)
-
-        return marco
-
+           marco = QFrame()
+           marco.setObjectName("tarjeta")
+           marco.setStyleSheet(f"""
+               QFrame#tarjeta {{
+                   background-color: white;
+                   border: 1px solid #D9E2E4;
+                   border-radius: {escalar(4)}px;
+               }}
+           """)
+   
+           layout = QVBoxLayout(marco)
+           layout.setContentsMargins(escalar(12), escalar(8), escalar(12), escalar(8))
+           layout.setSpacing(escalar(6))
+   
+           layout.addWidget(self._crear_etiqueta("Nivel de Limpieza", "#115E67", 13, True))
+   
+           self._contenedor_botones_limpieza = QHBoxLayout()
+           self._contenedor_botones_limpieza.setSpacing(escalar(8))
+           layout.addLayout(self._contenedor_botones_limpieza)
+   
+           fila_paginacion = QHBoxLayout()
+           fila_paginacion.setSpacing(escalar(6))
+   
+           self._btn_primera = QPushButton("<<")
+           self._btn_anterior = QPushButton("<")
+           self._lbl_pagina = QLabel("")
+           self._btn_siguiente = QPushButton(">")
+           self._btn_ultima = QPushButton(">>")
+   
+           for boton in (self._btn_primera, self._btn_anterior, self._btn_siguiente, self._btn_ultima):
+               boton.setCursor(Qt.PointingHandCursor)
+               boton.setFixedWidth(escalar(34))
+               boton.setFixedHeight(escalar(22))
+               boton.setStyleSheet(f"""
+                   QPushButton {{
+                       background-color: white;
+                       color: #115E67;
+                       border: 1px solid #D9E2E4;
+                       border-radius: {escalar(4)}px;
+                       font-weight: 600;
+                       font-size: {escalar_fuente(11)}px;
+                   }}
+                   QPushButton:hover {{ background-color: #EAF4F5; }}
+                   QPushButton:disabled {{ color: #BBB; border-color: #EEE; }}
+               """)
+   
+           self._lbl_pagina.setAlignment(Qt.AlignCenter)
+           self._lbl_pagina.setStyleSheet(
+               f"color: #115E67; font-size: {escalar_fuente(12)}px; background: transparent; border: none;"
+           )
+   
+           self._btn_primera.clicked.connect(lambda: self._ir_a_pagina(0))
+           self._btn_anterior.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza - 1))
+           self._btn_siguiente.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza + 1))
+           self._btn_ultima.clicked.connect(lambda: self._ir_a_pagina(self._total_paginas_limpieza - 1))
+   
+           fila_paginacion.addStretch()
+           fila_paginacion.addWidget(self._btn_primera)
+           fila_paginacion.addWidget(self._btn_anterior)
+           fila_paginacion.addWidget(self._lbl_pagina)
+           fila_paginacion.addWidget(self._btn_siguiente)
+           fila_paginacion.addWidget(self._btn_ultima)
+           fila_paginacion.addStretch()
+           layout.addLayout(fila_paginacion)
+   
+           try:
+               repositorio_limpieza = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
+               self._tipos_limpieza = repositorio_limpieza.obtener_tipos_limpieza()
+           except Exception as e:
+               print("No fue posible cargar tipos de limpieza:", e)
+               self._tipos_limpieza = []
+   
+           self._grupo_limpieza = QButtonGroup(self)
+           self._grupo_limpieza.setExclusive(True)
+           self._grupo_limpieza.buttonClicked.connect(self._tipo_limpieza_elegido)
+   
+           self._tamano_pagina_limpieza = 8
+           self._pagina_actual_limpieza = 0
+           self._total_paginas_limpieza = max(
+               1, -(-len(self._tipos_limpieza) // self._tamano_pagina_limpieza)
+           )
+   
+           self._ir_a_pagina(0)
+   
+           return marco
     def _ir_a_pagina(self, numero_pagina: int):
         numero_pagina = max(0, min(numero_pagina, self._total_paginas_limpieza - 1))
         self._pagina_actual_limpieza = numero_pagina
@@ -664,68 +722,117 @@ class FichaTecnica(QWidget):
         self._btn_siguiente.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
         self._btn_ultima.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
 
-    def _tipo_limpieza_elegido(self, boton):
-        self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
-        self._refrescar_preview_segun_seleccion()
-        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
-        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
-        self.actualizar_vista_previa(datos)
+    
+    def _ir_a_pagina(self, numero_pagina: int):
+        numero_pagina = max(0, min(numero_pagina, self._total_paginas_limpieza - 1))
+        self._pagina_actual_limpieza = numero_pagina
+
+        for boton in list(self._grupo_limpieza.buttons()):
+            self._grupo_limpieza.removeButton(boton)
+            self._contenedor_botones_limpieza.removeWidget(boton)
+            boton.deleteLater()
+
+        inicio = numero_pagina * self._tamano_pagina_limpieza
+        fin = inicio + self._tamano_pagina_limpieza
+        tipos_pagina = self._tipos_limpieza[inicio:fin]
+
+        if not tipos_pagina:
+            etiqueta_vacio = QLabel("No hay tipos de limpieza configurados.")
+            etiqueta_vacio.setStyleSheet(
+                f"color: #999; font-size: {escalar_fuente(13)}px; background: transparent; border: none;"
+            )
+            self._contenedor_botones_limpieza.addWidget(etiqueta_vacio)
+        else:
+            for tipo in tipos_pagina:
+                boton = QPushButton(f"{tipo.tpo_lmpza}")
+                boton.setCheckable(True)
+                boton.setCursor(Qt.PointingHandCursor)
+                boton.setMinimumHeight(escalar(34))
+                boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                boton.setProperty("tpo_lmpza", tipo.tpo_lmpza)
+                boton.setProperty("nombre_limpieza", tipo.nmbre)
+                boton.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: white;
+                        color: #115E67;
+                        border: 1px solid #D9E2E4;
+                        border-radius: {escalar(4)}px;
+                        font-size: {escalar_fuente(14)}px;
+                        font-weight: 600;
+                    }}
+                    QPushButton:hover {{ background-color: #EAF4F5; }}
+                    QPushButton:checked {{
+                        background-color: #115E67;
+                        color: white;
+                        border: 1px solid #115E67;
+                    }}
+                """)
+                self._grupo_limpieza.addButton(boton)
+                self._contenedor_botones_limpieza.addWidget(boton)
+
+        self._lbl_pagina.setText(f"{self._pagina_actual_limpieza + 1} / {self._total_paginas_limpieza}")
+        self._btn_primera.setEnabled(self._pagina_actual_limpieza > 0)
+        self._btn_anterior.setEnabled(self._pagina_actual_limpieza > 0)
+        self._btn_siguiente.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
+        self._btn_ultima.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
 
     # ==============================================================
     # BÁSCULA - PESO
     # ==============================================================
     def _crear_bascula(self) -> QFrame:
         marco = QFrame()
-        marco.setStyleSheet("""
-            QFrame {
+        marco.setObjectName("tarjeta")
+        marco.setStyleSheet(f"""
+            QFrame#tarjeta {{
                 background-color: white;
                 border: 1px solid #D9E2E4;
-                border-radius: 12px;
-            }
+                border-radius: {escalar(4)}px;
+            }}
         """)
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(escalar(20), escalar(16), escalar(20), escalar(16))
+        layout.setContentsMargins(escalar(16), escalar(10), escalar(16), escalar(12))
         layout.setSpacing(escalar(8))
 
-        titulo = QLabel("Báscula - Peso")
-        titulo.setStyleSheet(
-            f"font-size: {escalar_fuente(15)}px; font-weight: bold; color: #115E67;"
-        )
-        layout.addWidget(titulo)
+        layout.addWidget(self._crear_etiqueta("Báscula - Peso", "#115E67", 15, True))
 
         self.etiqueta_peso = QLabel(f"{self.peso_neto_kg:.3f}")
         self.etiqueta_peso.setAlignment(Qt.AlignCenter)
+        self.etiqueta_peso.setMinimumHeight(escalar(120))
+        self.etiqueta_peso.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.etiqueta_peso.setStyleSheet(f"""
             background-color: #E8F0EF;
             color: #115E67;
-            font-size: {escalar_fuente(40)}px;
+            font-size: {escalar_fuente(68)}px;
             font-weight: bold;
             font-family: 'Courier New';
-            border-radius: {escalar(8)}px;
-            padding: {escalar(10)}px;
+            border: 2px solid #115E67;
+            border-radius: 0px;
+            padding: {escalar(6)}px;
         """)
         layout.addWidget(self.etiqueta_peso)
 
-        self.etiqueta_peso_neto = QLabel(f"Peso neto        {self.peso_neto_kg:.3f} kg")
-        self.etiqueta_peso_neto.setStyleSheet(f"color: #444; font-size: {escalar_fuente(13)}px;")
+        self.etiqueta_peso_neto = QLabel(f"Peso Neto        {self.peso_neto_kg:.3f} kg")
+        self.etiqueta_peso_neto.setStyleSheet(
+            f"color: #115E67; font-size: {escalar_fuente(23)}px; background: transparent; border: none;"
+        )
         layout.addWidget(self.etiqueta_peso_neto)
 
-        etiqueta_impresora = QLabel("Impresora:")
-        etiqueta_impresora.setStyleSheet(
-            f"color: #666; font-size: {escalar_fuente(13)}px; margin-top: {escalar(6)}px;"
-        )
+        layout.addWidget(_linea_horizontal())
+
+        etiqueta_impresora = self._crear_etiqueta("Impresora:", "#4F7F84", 13)
         layout.addWidget(etiqueta_impresora)
 
         self.combo_impresora = QComboBox()
+        self.combo_impresora.setMinimumHeight(escalar(36))
         self.combo_impresora.setStyleSheet(f"""
             QComboBox {{
                 background-color: white;
                 border: 1px solid #D9E2E4;
-                border-radius: {escalar(6)}px;
-                padding: {escalar(6)}px;
+                border-radius: {escalar(4)}px;
+                padding: {escalar(4)}px {escalar(8)}px;
                 font-size: {escalar_fuente(13)}px;
-                color: #222;
+                color: #115E67;
             }}
         """)
 
@@ -740,12 +847,32 @@ class FichaTecnica(QWidget):
 
         self.impresora_seleccionada = self.combo_impresora.currentText()
         self.combo_impresora.currentTextChanged.connect(self._on_impresora_cambiada)
+
         self.btn_ajustar_etiqueta = QPushButton("Ajustar etiqueta…")
+        self.btn_ajustar_etiqueta.setMinimumHeight(escalar(34))
+        self.btn_ajustar_etiqueta.setCursor(Qt.PointingHandCursor)
+        self.btn_ajustar_etiqueta.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #F0F4F4;
+                color: #115E67;
+                border: 1px solid #D9E2E4;
+                border-radius: {escalar(4)}px;
+                font-size: {escalar_fuente(13)}px;
+            }}
+            QPushButton:hover {{ background-color: #E3EEEE; }}
+        """)
         self.btn_ajustar_etiqueta.clicked.connect(self._abrir_ajuste_etiqueta)
+
         layout.addWidget(self.combo_impresora)
         layout.addWidget(self.btn_ajustar_etiqueta)
         layout.addStretch()
         return marco
+    def _tipo_limpieza_elegido(self, boton):
+        self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
+        self._refrescar_preview_segun_seleccion()
+        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
+        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
+        self.actualizar_vista_previa(datos)
 
     def _abrir_ajuste_etiqueta(self):
         nombre = self.combo_impresora.currentText().strip()
@@ -761,6 +888,7 @@ class FichaTecnica(QWidget):
             return
         if guardado:
             pass  # aquí refrescas tu vista previa si lo necesitas
+
     def _on_impresora_cambiada(self, nombre_impresora: str) -> None:
         self.impresora_seleccionada = nombre_impresora
 
@@ -769,64 +897,79 @@ class FichaTecnica(QWidget):
     # ==============================================================
     def _crear_datos_adicionales(self) -> QFrame:
         marco = QFrame()
-        marco.setStyleSheet("""
-            QFrame {
+        marco.setObjectName("tarjeta")
+        marco.setStyleSheet(f"""
+            QFrame#tarjeta {{
                 background-color: white;
                 border: 1px solid #D9E2E4;
-                border-radius: 10px;
-            }
+                border-radius: {escalar(4)}px;
+            }}
         """)
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(escalar(8), escalar(8), escalar(8), escalar(8))
-        layout.setSpacing(escalar(5))
+        layout.setContentsMargins(escalar(14), escalar(14), escalar(14), escalar(14))
+        layout.setSpacing(escalar(14))
 
         self.lbl_vista_previa_etiqueta = QLabel()
         self.lbl_vista_previa_etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_vista_previa_etiqueta.setMinimumHeight(escalar(150))
+        self.lbl_vista_previa_etiqueta.setMinimumHeight(escalar(280))
         self.lbl_vista_previa_etiqueta.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.lbl_vista_previa_etiqueta.setStyleSheet(f"""
+            background-color: white;
+            border: 1px solid #D9E2E4;
+            border-radius: {escalar(4)}px;
+        """)
         layout.addWidget(self.lbl_vista_previa_etiqueta)
 
-            # --- Consecutivo de pesaje + Inactivar ---
+        # --- Consecutivo de pesaje + Inactivar ---
         fila_historico = QHBoxLayout()
-        fila_historico.setSpacing(10)
+        fila_historico.setSpacing(escalar(10))
 
-        etiqueta_historico = QLabel("Consecutivo:")
-        etiqueta_historico.setStyleSheet(
-            f"color: #666; font-size: {escalar_fuente(13)}px;"
-        )
-        etiqueta_historico.setSizePolicy(
-            QSizePolicy.Fixed,
-            QSizePolicy.Fixed
-        )
-
+        etiqueta_historico = self._crear_etiqueta("Consecutivo:", "#115E67", 15)
+        etiqueta_historico.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         fila_historico.addWidget(etiqueta_historico)
 
         self.combo_historico_pesaje = QComboBox()
         self.combo_historico_pesaje.setFixedWidth(escalar(220))
+        self.combo_historico_pesaje.setMinimumHeight(escalar(44))
         self.combo_historico_pesaje.setEditable(True)
-        self.combo_historico_pesaje.setStyleSheet("""
-            QComboBox {
+        self.combo_historico_pesaje.setStyleSheet(f"""
+            QComboBox {{
                 background-color: white;
                 border: 1px solid #D9E2E4;
-                border-radius: 6px;
-                padding: 4px 30px;
-                font-size: 12px;
-            }
+                border-radius: {escalar(4)}px;
+                padding: 4px 8px;
+                font-size: {escalar_fuente(13)}px;
+                color: #115E67;
+            }}
         """)
         self.combo_historico_pesaje.activated.connect(self._on_historico_combo_cambiado)
         self.combo_historico_pesaje.editTextChanged.connect(self._on_historico_texto_editado)
         self.combo_historico_pesaje.lineEdit().editingFinished.connect(self._on_historico_texto_confirmado)
-        fila_historico.addWidget(self.combo_historico_pesaje, stretch=1)
+        fila_historico.addWidget(self.combo_historico_pesaje)
 
         self.check_inactivar = QCheckBox("Inactivar")
-        self.check_inactivar.setStyleSheet(
-            f"color: #B00020; font-size: {escalar_fuente(13)}px;"
-        )
-        self.check_inactivar.setSizePolicy(
-            QSizePolicy.Fixed,
-            QSizePolicy.Fixed
-        )
+        self.check_inactivar.setStyleSheet(f"""
+            QCheckBox {{
+                color: #B00020;
+                font-size: {escalar_fuente(15)}px;
+                background: transparent;
+                border: none;
+                spacing: {escalar(8)}px;
+            }}
+            QCheckBox::indicator {{
+                width: {escalar(22)}px;
+                height: {escalar(22)}px;
+                border: 1px solid #D9E2E4;
+                border-radius: {escalar(4)}px;
+                background: white;
+            }}
+            QCheckBox::indicator:checked {{
+                background: #B00020;
+                border: 1px solid #B00020;
+            }}
+        """)
+        self.check_inactivar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         fila_historico.addWidget(self.check_inactivar)
         fila_historico.addStretch()
@@ -840,8 +983,19 @@ class FichaTecnica(QWidget):
 
         pixmap = generar_vista_previa_pixmap(datos)
 
-        ancho_max_preview = escalar(588)
-        alto_max_preview = escalar(150)
+        # Zoom: recorta márgenes blancos (fracción de cada lado; 0 = sin recorte)
+        MARGEN_X = 0.04
+        MARGEN_Y = 0.06
+        ancho, alto = pixmap.width(), pixmap.height()
+        pixmap = pixmap.copy(
+            int(ancho * MARGEN_X),
+            int(alto * MARGEN_Y),
+            int(ancho * (1 - 2 * MARGEN_X)),
+            int(alto * (1 - 2 * MARGEN_Y)),
+        )
+
+        ancho_max_preview = escalar(660)   # antes 588
+        alto_max_preview = escalar(180)    # antes 150
 
         pixmap_escalado = pixmap.scaled(
             ancho_max_preview,

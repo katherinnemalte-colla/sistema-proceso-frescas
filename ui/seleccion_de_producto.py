@@ -23,12 +23,13 @@ from collections import namedtuple
 from utils import mensajes
 from utils.rutas import ruta_recurso
 from repositories.etiquetas.frescas_100x45 import (siguiente_consecutivo_etiqueta_canasta)
+from utils.tiempos import medir
+from collections import namedtuple
 
 CriterioFiltroRes = namedtuple(
     "CriterioFiltroRes",
     ["tpo_pza", "cdgo_espcie", "cdgo_plu", "cod_emprsa"],
 )
-
 
 # Cuántos botones de letra se muestran a la vez en el paginador.
 BOTONES_LETRA_VISIBLES = 19
@@ -686,19 +687,18 @@ class SeleccionDeProducto(QWidget):
     # Filtro por PLU
     # ------------------------------------------------------------------
     def _aplicar_filtro_plu(self):
-        texto = self.campo_filtro_plu.text().strip()
+        texto_crudo = self.campo_filtro_plu.text()
+        texto = texto_crudo.strip()
+        busqueda_exacta = texto_crudo.endswith(" ")
+
         if not texto:
             self._layout_paginador_visible(True)
             self._cargar_productos_de_pagina_actual()
             return
 
         self._layout_paginador_visible(False)
-        criterio = self._obtener_criterio_filtro()
         productos = self.repositorio.buscar_productos_por_plu(
-            tpo_pza=criterio.tpo_pza,
-            cdgo_espcie=self.numEspecie,    # idem
-            texto_plu=texto,
-            cod_emprsa=self.empresa
+            *self._args_repositorio(), texto, exacto=busqueda_exacta
         )
         self._mostrar_productos(productos)
 
@@ -714,6 +714,7 @@ class SeleccionDeProducto(QWidget):
     # Grilla de productos
     # ------------------------------------------------------------------
     def _mostrar_productos(self, productos):
+     with medir("mosrtrar ficha tecnica"):
         while self._layout_grilla.count():
             item = self._layout_grilla.takeAt(0)
             widget = item.widget()
@@ -723,10 +724,11 @@ class SeleccionDeProducto(QWidget):
         if not productos:
             self._mostrar_mensaje_vacio()
             return
-
+    
         for indice, producto in enumerate(productos):
             fila, columna = divmod(indice, COLUMNAS_GRILLA)
             tarjeta = ProductoWidget(producto)
+            
             tarjeta.clicked.connect(self._abrir_ficha_tecnica)
             self._layout_grilla.addWidget(tarjeta, fila, columna)
 
@@ -772,14 +774,17 @@ class SeleccionDeProducto(QWidget):
             return CriterioFiltroRes(
                 tpo_pza=self.tpo_pza,
                 cdgo_espcie=self.numEspecie,
-                cdgo_plu=getattr(self, "campo_filtro_plu", None)
-                and self.campo_filtro_plu.text().strip()
-                or None,
-                cod_emprsa=self.empresa.strip() if self.empresa else None,
-
+                cdgo_plu=None,  # la búsqueda por PLU se hace en buscar_productos_por_plu
+                cod_emprsa=int(self.empresa) if self.empresa not in (None, "") else None,
             )
-        
         return self._criterio_filtro
+
+    def _args_repositorio(self):
+        """Argumentos de criterio, en el orden que espera cada repositorio."""
+        if self.tpo_pza is not None:
+            c = self._obtener_criterio_filtro()
+            return (c.cod_emprsa, c.cdgo_espcie, c.tpo_pza)
+        return (self._criterio_filtro,)
 
     def _volver_a_principal(self):
         self._app.mostrar_principal()
