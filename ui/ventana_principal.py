@@ -28,7 +28,6 @@ from utils.mensajes import MensajeVentanaFlujo
 from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QIntValidator
-from utils.tiempos import medir
 RUTA_ICONOS = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "assets",
@@ -925,7 +924,6 @@ class VentanaPrincipal(QWidget):
     # TIPO DE PIEZA ELEGIDO (DELANTERO / TRASERO)
     # ==============================================================
     def _tipo_pieza_elegido(self, tpo_pza, nombre_tipo_pieza):
-     with medir("lotes: consulta al repositorio especie seleccionada"):
         if self.especie_seleccionada not in TIPOS_PIEZA_POR_ESPECIE:
             return
         self._avanzar_a_seleccion_producto(
@@ -1061,8 +1059,6 @@ class VentanaPrincipal(QWidget):
         )
 
         try:
-            with medir("lotes: consulta al repositorio"):
-
             # ------------------------------------------------------
             # FECHA + ESPECIE
             # ------------------------------------------------------

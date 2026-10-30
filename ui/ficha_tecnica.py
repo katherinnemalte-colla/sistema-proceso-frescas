@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame,
     QVBoxLayout, QHBoxLayout, QButtonGroup, QSizePolicy,
-    QScrollArea,QCheckBox,QComboBox,QDialog, QMessageBox, QPushButton
+    QScrollArea,QCheckBox,QComboBox,QDialog, QMessageBox, QPushButton,QGridLayout
 )
 from datetime import timedelta, date
 from typing import Optional
@@ -105,19 +105,24 @@ class FichaTecnica(QWidget):
         # --- NUEVO: fuerza el factor de escala según el alto real de este contenido ---
         ALTO_CONTENIDO_BASE_FICHA = 1100  # ajusta este valor midiendo tu contenido a factor 1
         factor = factor_para_contenido(ALTO_CONTENIDO_BASE_FICHA, minimo=0.55, maximo=1.2)
+        
+        
+        establecer_factor_temporal(factor)
+        try:
+            self._crear_interfaz()
+        finally:
+            limpiar_factor_temporal()
         establecer_factor_temporal(factor)
 
-        self._crear_interfaz()
-        limpiar_factor_temporal()
+        #self._crear_interfaz()
+        #limpiar_factor_temporal()
         self._timer_mensaje = QTimer(self)
         self._timer_mensaje.setSingleShot(True)
         self._timer_mensaje.timeout.connect(self._ocultar_mensaje)
         self.mensaje_temporal.connect(self._mostrar_mensaje)
         self.numero_ticket = self.nmro_psta  
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
-        self.actualizar_vista_previa(
-            construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
-        )
+    
         bascula_service.peso_actualizado.connect(self._on_peso_actualizado)
         self._cargar_historicos_pesaje()
     # ==============================================================
@@ -159,7 +164,7 @@ class FichaTecnica(QWidget):
         
         return dias_ref, dias_cong, fecha_vencimiento_refrigeracion, fecha_vencimiento_congelacion
     
-    def _crear_etiqueta(self, texto, color="#222", tamano=13, negrita=False) -> QLabel:
+    def _crear_etiqueta(self, texto, color="#222", tamano=16, negrita=False) -> QLabel:
         etiqueta = QLabel(texto)
         etiqueta.setStyleSheet(
             f"color: {color}; font-size: {escalar_fuente(tamano)}px; "
@@ -586,151 +591,143 @@ class FichaTecnica(QWidget):
        # TIPO DE LIMPIEZA
        # ==============================================================
     def _crear_seccion_tipo_limpieza(self) -> QFrame:
-           marco = QFrame()
-           marco.setObjectName("tarjeta")
-           marco.setStyleSheet(f"""
-               QFrame#tarjeta {{
-                   background-color: white;
-                   border: 1px solid #D9E2E4;
-                   border-radius: {escalar(4)}px;
-               }}
-           """)
-   
-           layout = QVBoxLayout(marco)
-           layout.setContentsMargins(escalar(12), escalar(8), escalar(12), escalar(8))
-           layout.setSpacing(escalar(6))
-   
-           layout.addWidget(self._crear_etiqueta("Nivel de Limpieza", "#115E67", 13, True))
-   
-           self._contenedor_botones_limpieza = QHBoxLayout()
-           self._contenedor_botones_limpieza.setSpacing(escalar(8))
-           layout.addLayout(self._contenedor_botones_limpieza)
-   
-           fila_paginacion = QHBoxLayout()
-           fila_paginacion.setSpacing(escalar(6))
-   
-           self._btn_primera = QPushButton("<<")
-           self._btn_anterior = QPushButton("<")
-           self._lbl_pagina = QLabel("")
-           self._btn_siguiente = QPushButton(">")
-           self._btn_ultima = QPushButton(">>")
-   
-           for boton in (self._btn_primera, self._btn_anterior, self._btn_siguiente, self._btn_ultima):
-               boton.setCursor(Qt.PointingHandCursor)
-               boton.setFixedWidth(escalar(34))
-               boton.setFixedHeight(escalar(22))
-               boton.setStyleSheet(f"""
-                   QPushButton {{
-                       background-color: white;
-                       color: #115E67;
-                       border: 1px solid #D9E2E4;
-                       border-radius: {escalar(4)}px;
-                       font-weight: 600;
-                       font-size: {escalar_fuente(11)}px;
-                   }}
-                   QPushButton:hover {{ background-color: #EAF4F5; }}
-                   QPushButton:disabled {{ color: #BBB; border-color: #EEE; }}
-               """)
-   
-           self._lbl_pagina.setAlignment(Qt.AlignCenter)
-           self._lbl_pagina.setStyleSheet(
-               f"color: #115E67; font-size: {escalar_fuente(12)}px; background: transparent; border: none;"
-           )
-   
-           self._btn_primera.clicked.connect(lambda: self._ir_a_pagina(0))
-           self._btn_anterior.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza - 1))
-           self._btn_siguiente.clicked.connect(lambda: self._ir_a_pagina(self._pagina_actual_limpieza + 1))
-           self._btn_ultima.clicked.connect(lambda: self._ir_a_pagina(self._total_paginas_limpieza - 1))
-   
-           fila_paginacion.addStretch()
-           fila_paginacion.addWidget(self._btn_primera)
-           fila_paginacion.addWidget(self._btn_anterior)
-           fila_paginacion.addWidget(self._lbl_pagina)
-           fila_paginacion.addWidget(self._btn_siguiente)
-           fila_paginacion.addWidget(self._btn_ultima)
-           fila_paginacion.addStretch()
-           layout.addLayout(fila_paginacion)
-   
-           try:
-               repositorio_limpieza = ObtenerTipoLimpiezaRepository(self._obtener_conexion)
-               self._tipos_limpieza = repositorio_limpieza.obtener_tipos_limpieza()
-           except Exception as e:
-               print("No fue posible cargar tipos de limpieza:", e)
-               self._tipos_limpieza = []
-   
-           self._grupo_limpieza = QButtonGroup(self)
-           self._grupo_limpieza.setExclusive(True)
-           self._grupo_limpieza.buttonClicked.connect(self._tipo_limpieza_elegido)
-   
-           self._tamano_pagina_limpieza = 8
-           self._pagina_actual_limpieza = 0
-           self._total_paginas_limpieza = max(
-               1, -(-len(self._tipos_limpieza) // self._tamano_pagina_limpieza)
-           )
-   
-           self._ir_a_pagina(0)
-   
-           return marco
+        marco = QFrame()
+        marco.setObjectName("tarjeta")
+        marco.setStyleSheet(f"""
+            QFrame#tarjeta {{
+                background-color: white;
+                border: 1px solid #D9E2E4;
+                border-radius: {escalar(4)}px;
+            }}
+        """)
+
+        layout = QVBoxLayout(marco)
+        layout.setContentsMargins(escalar(12), escalar(8), escalar(12), escalar(8))
+        layout.setSpacing(escalar(6))
+
+        layout.addWidget(
+            self._crear_etiqueta("Nivel de Limpieza", "#115E67", 16, True)
+        )
+
+        # Dimensiones de la matriz (3 filas x 4 columnas, botones cuadrados)
+        self._filas_limpieza = 2
+        self._columnas_limpieza = 7
+        self._lado_boton_limpieza = escalar(90)
+
+        self._contenedor_botones_limpieza = QGridLayout()
+        self._contenedor_botones_limpieza.setSpacing(escalar(8))
+        self._contenedor_botones_limpieza.setContentsMargins(0, 0, 0, 0)
+        self._contenedor_botones_limpieza.setAlignment(Qt.AlignCenter)
+
+        for columna in range(self._columnas_limpieza):
+            self._contenedor_botones_limpieza.setColumnStretch(columna, 0)
+
+        layout.addLayout(self._contenedor_botones_limpieza)
+
+        # Paginación
+        fila_paginacion = QHBoxLayout()
+        fila_paginacion.setSpacing(escalar(6))
+
+        self._btn_primera = QPushButton("<<")
+        self._btn_anterior = QPushButton("<")
+        self._lbl_pagina = QLabel("")
+        self._btn_siguiente = QPushButton(">")
+        self._btn_ultima = QPushButton(">>")
+
+        for boton in (
+            self._btn_primera,
+            self._btn_anterior,
+            self._btn_siguiente,
+            self._btn_ultima,
+        ):
+            boton.setCursor(Qt.PointingHandCursor)
+            boton.setFixedSize(escalar(34), escalar(22))
+            boton.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: white;
+                    color: #115E67;
+                    border: 1px solid #D9E2E4;
+                    border-radius: {escalar(4)}px;
+                    font-weight: 500;
+                    font-size: {escalar_fuente(11)}px;
+                }}
+                QPushButton:hover {{
+                    background-color: #EAF4F5;
+                }}
+                QPushButton:disabled {{
+                    color: #BBB;
+                    border-color: #EEE;
+                }}
+            """)
+
+        self._lbl_pagina.setAlignment(Qt.AlignCenter)
+        self._lbl_pagina.setStyleSheet(
+            f"color: #115E67; font-size: {escalar_fuente(12)}px;"
+            " background: transparent; border: none;"
+        )
+
+        self._btn_primera.clicked.connect(lambda: self._ir_a_pagina(0))
+        self._btn_anterior.clicked.connect(
+            lambda: self._ir_a_pagina(self._pagina_actual_limpieza - 1)
+        )
+        self._btn_siguiente.clicked.connect(
+            lambda: self._ir_a_pagina(self._pagina_actual_limpieza + 1)
+        )
+        self._btn_ultima.clicked.connect(
+            lambda: self._ir_a_pagina(self._total_paginas_limpieza - 1)
+        )
+
+        fila_paginacion.addStretch()
+        fila_paginacion.addWidget(self._btn_primera)
+        fila_paginacion.addWidget(self._btn_anterior)
+        fila_paginacion.addWidget(self._lbl_pagina)
+        fila_paginacion.addWidget(self._btn_siguiente)
+        fila_paginacion.addWidget(self._btn_ultima)
+        fila_paginacion.addStretch()
+
+        layout.addLayout(fila_paginacion)
+
+        # Obtener niveles de limpieza
+        try:
+            repositorio_limpieza = ObtenerTipoLimpiezaRepository(
+                self._obtener_conexion
+            )
+            self._tipos_limpieza = repositorio_limpieza.obtener_tipos_limpieza()
+        except Exception as e:
+            print("No fue posible cargar tipos de limpieza:", e)
+            self._tipos_limpieza = []
+
+        # Grupo exclusivo de selección
+        self._grupo_limpieza = QButtonGroup(self)
+        self._grupo_limpieza.setExclusive(True)
+        self._grupo_limpieza.buttonClicked.connect(self._tipo_limpieza_elegido)
+
+        # Paginación: 12 niveles por página (3 x 4)
+        self._tamano_pagina_limpieza = (
+            self._filas_limpieza * self._columnas_limpieza
+        )
+        self._pagina_actual_limpieza = 0
+        self._total_paginas_limpieza = max(
+            1,
+            -(-len(self._tipos_limpieza) // self._tamano_pagina_limpieza)
+        )
+
+        self._ir_a_pagina(0)
+
+        return marco
+ 
     def _ir_a_pagina(self, numero_pagina: int):
         numero_pagina = max(0, min(numero_pagina, self._total_paginas_limpieza - 1))
         self._pagina_actual_limpieza = numero_pagina
 
+        # Limpiar botones (y cualquier etiqueta) de la página anterior
         for boton in list(self._grupo_limpieza.buttons()):
             self._grupo_limpieza.removeButton(boton)
-            self._contenedor_botones_limpieza.removeWidget(boton)
-            boton.deleteLater()
-
-        inicio = numero_pagina * self._tamano_pagina_limpieza
-        fin = inicio + self._tamano_pagina_limpieza
-        tipos_pagina = self._tipos_limpieza[inicio:fin]
-
-        if not tipos_pagina:
-            etiqueta_vacio = QLabel("No hay tipos de limpieza configurados.")
-            etiqueta_vacio.setStyleSheet(f"color: #999; font-size: {escalar_fuente(13)}px;")
-            self._contenedor_botones_limpieza.addWidget(etiqueta_vacio)
-        else:
-            for tipo in tipos_pagina:
-                boton = QPushButton(f"{tipo.tpo_lmpza}")
-                boton.setCheckable(True)
-                boton.setCursor(Qt.PointingHandCursor)
-                boton.setMinimumHeight(escalar(42))
-                boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                boton.setProperty("tpo_lmpza", tipo.tpo_lmpza)
-                boton.setProperty("nombre_limpieza", tipo.nmbre)
-                boton.setStyleSheet(f"""
-                    QPushButton {{
-                        background-color: white;
-                        color: #115E67;
-                        border: 1px solid #D9E2E4;
-                        border-radius: {escalar(10)}px;
-                        font-size: {escalar_fuente(13)}px;
-                        font-weight: 600;
-                    }}
-                    QPushButton:hover {{ background-color: #EAF4F5; }}
-                    QPushButton:checked {{
-                        background-color: #115E67;
-                        color: white;
-                        border: 1px solid #115E67;
-                    }}
-                """)
-                self._grupo_limpieza.addButton(boton)
-                self._contenedor_botones_limpieza.addWidget(boton)
-
-        self._lbl_pagina.setText(f"{self._pagina_actual_limpieza + 1} / {self._total_paginas_limpieza}")
-        self._btn_primera.setEnabled(self._pagina_actual_limpieza > 0)
-        self._btn_anterior.setEnabled(self._pagina_actual_limpieza > 0)
-        self._btn_siguiente.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
-        self._btn_ultima.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
-
-    
-    def _ir_a_pagina(self, numero_pagina: int):
-        numero_pagina = max(0, min(numero_pagina, self._total_paginas_limpieza - 1))
-        self._pagina_actual_limpieza = numero_pagina
-
-        for boton in list(self._grupo_limpieza.buttons()):
-            self._grupo_limpieza.removeButton(boton)
-            self._contenedor_botones_limpieza.removeWidget(boton)
-            boton.deleteLater()
+        while self._contenedor_botones_limpieza.count():
+            item = self._contenedor_botones_limpieza.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
         inicio = numero_pagina * self._tamano_pagina_limpieza
         fin = inicio + self._tamano_pagina_limpieza
@@ -739,16 +736,22 @@ class FichaTecnica(QWidget):
         if not tipos_pagina:
             etiqueta_vacio = QLabel("No hay tipos de limpieza configurados.")
             etiqueta_vacio.setStyleSheet(
-                f"color: #999; font-size: {escalar_fuente(13)}px; background: transparent; border: none;"
+                f"color: #999; font-size: {escalar_fuente(13)}px;"
+                " background: transparent; border: none;"
             )
-            self._contenedor_botones_limpieza.addWidget(etiqueta_vacio)
+            self._contenedor_botones_limpieza.addWidget(
+                etiqueta_vacio, 0, 0, 1, self._columnas_limpieza
+            )
         else:
-            for tipo in tipos_pagina:
+            for indice, tipo in enumerate(tipos_pagina):
+                fila, columna = divmod(indice, self._columnas_limpieza)
+
                 boton = QPushButton(f"{tipo.tpo_lmpza}")
                 boton.setCheckable(True)
                 boton.setCursor(Qt.PointingHandCursor)
-                boton.setMinimumHeight(escalar(34))
-                boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                boton.setFixedSize(
+                    self._lado_boton_limpieza, self._lado_boton_limpieza
+                )
                 boton.setProperty("tpo_lmpza", tipo.tpo_lmpza)
                 boton.setProperty("nombre_limpieza", tipo.nmbre)
                 boton.setStyleSheet(f"""
@@ -768,14 +771,17 @@ class FichaTecnica(QWidget):
                     }}
                 """)
                 self._grupo_limpieza.addButton(boton)
-                self._contenedor_botones_limpieza.addWidget(boton)
+                self._contenedor_botones_limpieza.addWidget(boton, fila, columna)
 
-        self._lbl_pagina.setText(f"{self._pagina_actual_limpieza + 1} / {self._total_paginas_limpieza}")
-        self._btn_primera.setEnabled(self._pagina_actual_limpieza > 0)
-        self._btn_anterior.setEnabled(self._pagina_actual_limpieza > 0)
-        self._btn_siguiente.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
-        self._btn_ultima.setEnabled(self._pagina_actual_limpieza < self._total_paginas_limpieza - 1)
-
+        self._lbl_pagina.setText(
+            f"{self._pagina_actual_limpieza + 1} / {self._total_paginas_limpieza}"
+        )
+        hay_anterior = self._pagina_actual_limpieza > 0
+        hay_siguiente = self._pagina_actual_limpieza < self._total_paginas_limpieza - 1
+        self._btn_primera.setEnabled(hay_anterior)
+        self._btn_anterior.setEnabled(hay_anterior)
+        self._btn_siguiente.setEnabled(hay_siguiente)
+        self._btn_ultima.setEnabled(hay_siguiente)
     # ==============================================================
     # BÁSCULA - PESO
     # ==============================================================
@@ -794,7 +800,7 @@ class FichaTecnica(QWidget):
         layout.setContentsMargins(escalar(16), escalar(10), escalar(16), escalar(12))
         layout.setSpacing(escalar(8))
 
-        layout.addWidget(self._crear_etiqueta("Báscula - Peso", "#115E67", 15, True))
+        layout.addWidget(self._crear_etiqueta("Báscula - Peso", "#115E67", 20, True))
 
         self.etiqueta_peso = QLabel(f"{self.peso_neto_kg:.3f}")
         self.etiqueta_peso.setAlignment(Qt.AlignCenter)
@@ -812,9 +818,9 @@ class FichaTecnica(QWidget):
         """)
         layout.addWidget(self.etiqueta_peso)
 
-        self.etiqueta_peso_neto = QLabel(f"Peso Neto        {self.peso_neto_kg:.3f} kg")
+        self.etiqueta_peso_neto = QLabel(f"{self.peso_neto_kg:.3f}")
         self.etiqueta_peso_neto.setStyleSheet(
-            f"color: #115E67; font-size: {escalar_fuente(23)}px; background: transparent; border: none;"
+            f"color: #115E67; font-size: {escalar_fuente(25)}px; background: transparent; border: none;"
         )
         layout.addWidget(self.etiqueta_peso_neto)
 
@@ -867,12 +873,10 @@ class FichaTecnica(QWidget):
         layout.addWidget(self.btn_ajustar_etiqueta)
         layout.addStretch()
         return marco
+    
     def _tipo_limpieza_elegido(self, boton):
         self.tipo_limpieza_seleccionado = boton.property("tpo_lmpza")
         self._refrescar_preview_segun_seleccion()
-        self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()
-        datos = construir_datos_etiqueta(**self._parametros_etiqueta_actuales)
-        self.actualizar_vista_previa(datos)
 
     def _abrir_ajuste_etiqueta(self):
         nombre = self.combo_impresora.currentText().strip()
@@ -908,7 +912,7 @@ class FichaTecnica(QWidget):
 
         layout = QVBoxLayout(marco)
         layout.setContentsMargins(escalar(14), escalar(14), escalar(14), escalar(14))
-        layout.setSpacing(escalar(14))
+        layout.setSpacing(escalar(34))
 
         self.lbl_vista_previa_etiqueta = QLabel()
         self.lbl_vista_previa_etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -994,8 +998,8 @@ class FichaTecnica(QWidget):
             int(alto * (1 - 2 * MARGEN_Y)),
         )
 
-        ancho_max_preview = escalar(660)   # antes 588
-        alto_max_preview = escalar(180)    # antes 150
+        ancho_max_preview = escalar(760)   # antes 588
+        alto_max_preview = escalar(280)    # antes 150
 
         pixmap_escalado = pixmap.scaled(
             ancho_max_preview,
@@ -1270,9 +1274,11 @@ class FichaTecnica(QWidget):
             "prcndor": 0,
         }
 
-
     def _limpiar_y_volver(self):
-        bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
+        try:
+            bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
+        except (RuntimeError, TypeError):
+            pass
         bascula_service.detener()
         self._app.mostrar_seleccion_sin_recargar()
 
@@ -1281,19 +1287,20 @@ class FichaTecnica(QWidget):
         super().closeEvent(event)
 
     def _volver_a_seleccion_de_producto(self):
-        bascula_service.peso_actualizado.disconnect(self._on_peso_actualizado)
         self._limpiar_y_volver()
-        bascula_service.detener()
-        self._app.mostrar_seleccion_sin_recargar()
     
     def _on_peso_actualizado(self, nuevo_peso: float) -> None:
-        obtener_puerto_config = bascula_service._obtener_puerto_configurado()
+        cambio = nuevo_peso != self.peso_neto_kg
+        if not hasattr(self, "_puerto_config_cache"):
+            self._puerto_config_cache = bascula_service._obtener_puerto_configurado()
         self.peso_neto_kg = nuevo_peso
         self.etiqueta_peso.setText(f"{nuevo_peso:.3f}")
-        self.etiqueta_peso_neto.setText(f"Peso neto        {nuevo_peso:.3f} kg "+ f"Puerto: {obtener_puerto_config}")
+        self.etiqueta_peso_neto.setText(f"Peso Neto: {nuevo_peso:.3f} kg "+ f"Puerto: {self._puerto_config_cache}")
 
+        if not cambio:
+            return
         if getattr(self, "_historico_seleccionado", None) is not None:
-            return   # hay un histórico en pantalla: la báscula no debe pisar ese preview
+            return
         if not getattr(self, "_parametros_etiqueta_actuales", None):
             return
         self._parametros_etiqueta_actuales = self._construir_parametros_etiqueta()

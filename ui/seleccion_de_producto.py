@@ -65,6 +65,7 @@ class ImagenEscalable(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._pixmap_original = None
+        self._ultimo_tamano = None
         self.setAlignment(Qt.AlignCenter)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMinimumHeight(60)
@@ -83,6 +84,9 @@ class ImagenEscalable(QLabel):
         margen = 16
         ancho_disponible = max(1, self.width() - margen)
         alto_disponible = max(1, self.height() - margen)
+        if (ancho_disponible, alto_disponible) == self._ultimo_tamano:
+            return
+        self._ultimo_tamano = (ancho_disponible, alto_disponible)
         super().setPixmap(
             self._pixmap_original.scaled(
                 ancho_disponible,
@@ -116,7 +120,7 @@ class ProductoWidget(QFrame):
             }}
             """
         )
-        _aplicar_sombra(self, blur=16, dy=3, alfa=30)
+        #_aplicar_sombra(self, blur=16, dy=3, alfa=30)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
@@ -199,6 +203,8 @@ class ProductoWidget(QFrame):
 
         pixmap = QPixmap()
         if pixmap.loadFromData(QByteArray(bytes(datos_binarios))):
+            if pixmap.width() > 600 or pixmap.height() > 600:
+                pixmap = pixmap.scaled(600, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             return pixmap
         return None
 
@@ -386,7 +392,7 @@ class SeleccionDeProducto(QWidget):
         tarjeta.setStyleSheet(
             f"background: white; border: 1px solid {COLOR_BORDE}; border-radius: 12px;"
         )
-        _aplicar_sombra(tarjeta, blur=14, dy=2, alfa=18)
+        #_aplicar_sombra(tarjeta, blur=14, dy=2, alfa=18)
 
         layout = QHBoxLayout(tarjeta)
         layout.setContentsMargins(escalar(14), escalar(10), escalar(18), escalar(10))
@@ -449,7 +455,6 @@ class SeleccionDeProducto(QWidget):
         contenedor.setStyleSheet(
             f"background: white; border: 1px solid {COLOR_BORDE}; border-radius: 12px;"
         )
-        _aplicar_sombra(contenedor, blur=14, dy=2, alfa=18)
 
         layout = QHBoxLayout(contenedor)
         layout.setContentsMargins(escalar(10), escalar(8), escalar(16), escalar(8))
@@ -579,8 +584,9 @@ class SeleccionDeProducto(QWidget):
     # Paginador alfabético — carga y navegación
     # ------------------------------------------------------------------
     def _cargar_paginador_alfabetico(self):
+        
+     with medir("construir_paginas"): 
         criterio = self._obtener_criterio_filtro()
-
         self._paginas_letras = self.repositorio.construir_paginas(
             cod_emprsa=criterio.cod_emprsa,
             cdgo_espcie=criterio.cdgo_espcie,

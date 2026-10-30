@@ -262,12 +262,10 @@ def siguiente_consecutivo_etiqueta_canasta() -> int:
     return consecutivo
 
 
-def construir_codigo(nombre_usuario, numero_ticket=None) -> str:
+def construir_codigo(cod_empresa, nombre_usuario, numero_ticket=None) -> str:
     if numero_ticket is None:
         numero_ticket = siguiente_consecutivo_etiqueta_canasta()
-
-    return f"{nombre_usuario} {CODIGO_PROCESO_DEFAULT} #{numero_ticket}"
-
+    return f"{cod_empresa} {nombre_usuario} {CODIGO_PROCESO_DEFAULT} #{numero_ticket}"
 
 def _generar_contenido_qr(
     lote: str,
@@ -427,8 +425,7 @@ def construir_datos_etiqueta(
 
         marca=crear_etiqueta_marca(),
         categoria=categoria,
-        codigo=construir_codigo(nombre_usuario, numero_ticket),
-
+        codigo=construir_codigo(f"E{cod_empresa}", nombre_usuario, numero_ticket),
         qr_izquierda=contenido_qr,
         qr_derecha=contenido_qr,
         tipo_conservacion=tipo_conservacion,

@@ -1,37 +1,26 @@
-from PySide6.QtWidgets import QApplication, QDialog
 
 import sys
 import os
+import ctypes
+import logging
+
+from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtGui import QIcon
+from PySide6.QtCore import QTimer
+
 from ui.ventana_login import VentanaLogin
 from ui.ventana_fondo import VentanaFondo
 from ui.app_ventana import VentanaApp
 from models.usuarios import Usuario
 from models.database import obtener_conexion
-from PySide6.QtGui import QIcon
-import ctypes
-from PySide6.QtCore import QTimer
-import logging
+from utils.logs import configurar_logging
+from config.settings import DB_SERVER
 
 def _obtener_directorio_base() -> str:
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
-    else:
-        return os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.abspath(__file__))
 
-
-def configurar_logging():
-    carpeta_logs = os.path.join(_obtener_directorio_base(), "logs")
-    os.makedirs(carpeta_logs, exist_ok=True)
-
-    ruta_log = os.path.join(carpeta_logs, "sistema.log")
-
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[
-            logging.FileHandler(ruta_log, encoding="utf-8"),
-        ],
-    )
 
 class ControladorApp:
 
@@ -45,16 +34,27 @@ class ControladorApp:
 
     def _mostrar_login(self):
         login = VentanaLogin(self.ventana_fondo)
-        resultado = login.exec()  # bloquea aquí hasta que el usuario entra o cancela
+        resultado = login.exec()
 
         if resultado == QDialog.Accepted:
             self.abrir_ventana_principal(login.usuario_autenticado)
         else:
-            sys.exit(0)  # el usuario cerró/canceló el login
-    
+            sys.exit(0)
+            
     def abrir_ventana_principal(self, usuario: Usuario):
         self.ventana_fondo.close()
+
+        # Obtener el nombre del usuario autenticado.
+        # Cambia "nombre" si tu modelo Usuario utiliza otro atributo.
+        nombre_usuario = usuario.nombre_usuario
+
         self.ventana_app = VentanaApp(usuario, obtener_conexion)
+
+        # Título de la ventana con el nombre del usuario.
+        self.ventana_app.setWindowTitle(
+            f"Etiquetas 2 en 1"+ f"  Usuario: {nombre_usuario}"+f" Entorno : {DB_SERVER}" 
+        )
+
         self.ventana_app.show()
         QTimer.singleShot(0, self.ventana_app.showMaximized)
 
@@ -62,14 +62,22 @@ class ControladorApp:
 def main():
     configurar_logging()
     if sys.platform == "win32":
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("cialta.frescas.1.0")
-    app = QApplication(sys.argv)
-    controlador = ControladorApp()  # noqa: F841 (se mantiene viva mientras corre la app)
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "cialta.frescas.1.0"
+        )
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    icon_path = os.path.join(base_dir, "assets", "icons", "icons", "cialtaicono.ico")
+    app = QApplication(sys.argv)
+    app.setApplicationDisplayName("Etiquetas")
+
+    # Icono global de la aplicación.
+    base_dir = _obtener_directorio_base()
+    icon_path = os.path.join(
+        base_dir, "assets", "icons", "icons", "cialtaicono.ico"
+    )
     app.setWindowIcon(QIcon(icon_path))
-    print(os.path.exists(icon_path), icon_path)
+
+    controlador = ControladorApp()
+
     sys.exit(app.exec())
  
  
