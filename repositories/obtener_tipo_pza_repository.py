@@ -35,8 +35,7 @@ class PaginaGrupo:
 class ProductoConImagenes:
     cdgo_plu: str
     nom_prog: str
-    con_arch: Optional[bytes]
-    con_arch_2: Optional[bytes]
+    #con_arch_2: Optional[bytes]
     con_arch_3: Optional[bytes]
     con_arch_4: Optional[bytes]
     con_arch_5: Optional[bytes]
@@ -44,8 +43,7 @@ class ProductoConImagenes:
 
     def imagenes(self) -> List[bytes]:
         campos = [
-            self.con_arch,
-            self.con_arch_2,
+            #self.con_arch_2,
             self.con_arch_3,
             self.con_arch_4,
             self.con_arch_5,
@@ -385,7 +383,12 @@ class ObtenerTipoPzaRepository:
         cdgo_espcie: int,
         tpo_pza: int,
         texto_plu: str,
+        exacto: bool = False,
     ) -> List[Producto]:
+
+        # Exacto: igualdad. Normal: contiene el texto.
+        operador = "=" if exacto else "LIKE"
+        valor_plu = texto_plu if exacto else f"%{texto_plu}%"
 
         consulta = f"""
             SELECT
@@ -397,21 +400,19 @@ class ObtenerTipoPzaRepository:
                 ON p.tpo_pza = a.tpo_pza
             LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia =
-                   CAST(p.cdgo_plu AS VARCHAR(50))
+                CAST(p.cdgo_plu AS VARCHAR(50))
             WHERE a.tpo_pza = ?
-              AND p.cntro_prcso = 1
-              AND p.cdgo_espcie = ?
-              AND p.estdo = 0
-              AND img.nom_prog = 'productos'
-              AND CAST(p.cdgo_plu AS VARCHAR(50)) LIKE ?
-              AND EXISTS (
-                  SELECT 1
-                  FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli ft
-                  WHERE 
-                  --ft.cod_emprsa = ?
-                  (? IS NULL OR ? = 1 OR ft.cod_emprsa = ?)
+            AND p.cntro_prcso = 1
+            AND p.cdgo_espcie = ?
+            AND p.estdo = 0
+            AND img.nom_prog = 'productos'
+            AND CAST(p.cdgo_plu AS VARCHAR(50)) {operador} ?
+            AND EXISTS (
+                SELECT 1
+                FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli ft
+                WHERE (? IS NULL OR ? = 1 OR ft.cod_emprsa = ?)
                     AND ft.cdgo_plu = p.cdgo_plu
-              )
+            )
             ORDER BY p.nmbre_prdcto
         """
 
@@ -422,7 +423,7 @@ class ObtenerTipoPzaRepository:
                 (
                     tpo_pza,
                     cdgo_espcie,
-                    f"%{texto_plu}%",
+                    valor_plu,
                     cod_emprsa,
                     cod_emprsa,
                     cod_emprsa,
@@ -452,8 +453,8 @@ class ObtenerTipoPzaRepository:
             SELECT
                 p.cdgo_plu,
                 p.nmbre_prdcto AS nom_prog,
-                img.con_arch_2 AS con_arch,
-                img.con_arch_2 AS con_arch_2,
+            --img.con_arch_2 AS con_arch,
+                --img.con_arch_2 AS con_arch_2,
                 img.con_arch_3 AS con_arch_3,
                 img.con_arch_4 AS con_arch_4,
                 img.con_arch_5 AS con_arch_5,
@@ -502,10 +503,10 @@ class ObtenerTipoPzaRepository:
             return ProductoConImagenes(
                 cdgo_plu=fila[0],
                 nom_prog=fila[1],
-                con_arch=fila[2],
-                con_arch_2=fila[3],
-                con_arch_3=fila[4],
-                con_arch_4=fila[5],
-                con_arch_5=fila[6],
-                con_arch_6=fila[7],
+                #con_arch=fila[2],
+                #con_arch_2=fila[2],
+                con_arch_3=fila[2],
+                con_arch_4=fila[3],
+                con_arch_5=fila[4],
+                con_arch_6=fila[5],
             )

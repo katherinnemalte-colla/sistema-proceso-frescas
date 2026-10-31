@@ -1,7 +1,6 @@
 
 import sys
 import os
-import ctypes
 import logging
 
 from PySide6.QtWidgets import QApplication, QDialog
@@ -43,9 +42,7 @@ class ControladorApp:
             
     def abrir_ventana_principal(self, usuario: Usuario):
         self.ventana_fondo.close()
-
-        # Obtener el nombre del usuario autenticado.
-        # Cambia "nombre" si tu modelo Usuario utiliza otro atributo.
+        
         nombre_usuario = usuario.nombre_usuario
 
         self.ventana_app = VentanaApp(usuario, obtener_conexion)
@@ -61,11 +58,6 @@ class ControladorApp:
 
 def main():
     configurar_logging()
-    if sys.platform == "win32":
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "cialta.frescas.1.0"
-        )
-
     app = QApplication(sys.argv)
     app.setApplicationDisplayName("Etiquetas")
 

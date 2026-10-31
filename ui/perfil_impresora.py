@@ -1,9 +1,3 @@
-"""
-Los perfiles se guardan en un JSON LOCAL (por usuario de Windows en cada
-computador):  %%\\etiquetasMk\\perfiles_impresoras.json
-Todos los errores de lectura/validación se registran en el log y se
-reemplazan por valores seguros: un JSON dañado nunca debe tumbar la app.
-"""
 
 import json
 import logging
