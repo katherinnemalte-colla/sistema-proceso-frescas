@@ -22,7 +22,7 @@ import shiboken6
 import logging
 from PySide6.QtPrintSupport import QPrinterInfo
 from services.hstrco_psje_service import registrar_historico_pesaje
-from repositories.hstrco_psje_repository import  guardar_historico_pesaje,obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, marcar_historico_reimpreso
+from repositories.hstrco_psje_repository import obtener_ultimos_pesajes_recientes, obtener_ultimos_historicos_pesaje, marcar_historico_reimpreso
 from ui.dialogo_ajuste_etiqueta import DialogoAjusteEtiqueta
 from repositories.obtener_tipo_limpieza_repository import normalizar_empresa
 
@@ -125,6 +125,7 @@ class FichaTecnica(QWidget):
     
         bascula_service.peso_actualizado.connect(self._on_peso_actualizado)
         self._cargar_historicos_pesaje()
+        
     # ==============================================================
     # CONEXIÓN A BD
     # ==============================================================
@@ -602,7 +603,7 @@ class FichaTecnica(QWidget):
         """)
 
         layout = QVBoxLayout(marco)
-        layout.setContentsMargins(escalar(12), escalar(8), escalar(12), escalar(8))
+        layout.setContentsMargins(escalar(8), escalar(8), escalar(8), escalar(8))
         layout.setSpacing(escalar(6))
 
         layout.addWidget(
@@ -611,8 +612,8 @@ class FichaTecnica(QWidget):
 
         # Dimensiones de la matriz (3 filas x 4 columnas, botones cuadrados)
         self._filas_limpieza = 2
-        self._columnas_limpieza = 7
-        self._lado_boton_limpieza = escalar(90)
+        self._columnas_limpieza = 8
+        self._lado_boton_limpieza = escalar(80)
 
         self._contenedor_botones_limpieza = QGridLayout()
         self._contenedor_botones_limpieza.setSpacing(escalar(8))
@@ -804,15 +805,15 @@ class FichaTecnica(QWidget):
 
         self.etiqueta_peso = QLabel(f"{self.peso_neto_kg:.3f}")
         self.etiqueta_peso.setAlignment(Qt.AlignCenter)
-        self.etiqueta_peso.setMinimumHeight(escalar(120))
+        self.etiqueta_peso.setMinimumHeight(escalar(90))
         self.etiqueta_peso.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.etiqueta_peso.setStyleSheet(f"""
             background-color: #E8F0EF;
             color: #115E67;
-            font-size: {escalar_fuente(68)}px;
+            font-size: {escalar_fuente(40)}px;
             font-weight: bold;
             font-family: 'Courier New';
-            border: 2px solid #115E67;
+            border: 2px;
             border-radius: 0px;
             padding: {escalar(6)}px;
         """)
@@ -826,52 +827,6 @@ class FichaTecnica(QWidget):
 
         layout.addWidget(_linea_horizontal())
 
-        etiqueta_impresora = self._crear_etiqueta("Impresora:", "#4F7F84", 13)
-        layout.addWidget(etiqueta_impresora)
-
-        self.combo_impresora = QComboBox()
-        self.combo_impresora.setMinimumHeight(escalar(36))
-        self.combo_impresora.setStyleSheet(f"""
-            QComboBox {{
-                background-color: white;
-                border: 1px solid #D9E2E4;
-                border-radius: {escalar(4)}px;
-                padding: {escalar(4)}px {escalar(8)}px;
-                font-size: {escalar_fuente(13)}px;
-                color: #115E67;
-            }}
-        """)
-
-        nombres_impresoras = [impresora.printerName() for impresora in QPrinterInfo.availablePrinters()]
-        self.combo_impresora.addItems(nombres_impresoras)
-
-        impresora_por_defecto = QPrinterInfo.defaultPrinter().printerName()
-        if "Godex ZX420i GZPL" in nombres_impresoras:
-            self.combo_impresora.setCurrentText("Godex ZX420i GZPL")
-        elif impresora_por_defecto in nombres_impresoras:
-            self.combo_impresora.setCurrentText(impresora_por_defecto)
-
-        self.impresora_seleccionada = self.combo_impresora.currentText()
-        self.combo_impresora.currentTextChanged.connect(self._on_impresora_cambiada)
-
-        self.btn_ajustar_etiqueta = QPushButton("Ajustar etiqueta…")
-        self.btn_ajustar_etiqueta.setMinimumHeight(escalar(34))
-        self.btn_ajustar_etiqueta.setCursor(Qt.PointingHandCursor)
-        self.btn_ajustar_etiqueta.setStyleSheet(f"""
-            QPushButton {{
-                background-color: #F0F4F4;
-                color: #115E67;
-                border: 1px solid #D9E2E4;
-                border-radius: {escalar(4)}px;
-                font-size: {escalar_fuente(13)}px;
-            }}
-            QPushButton:hover {{ background-color: #E3EEEE; }}
-        """)
-        self.btn_ajustar_etiqueta.clicked.connect(self._abrir_ajuste_etiqueta)
-
-        layout.addWidget(self.combo_impresora)
-        layout.addWidget(self.btn_ajustar_etiqueta)
-        layout.addStretch()
         return marco
     
     def _tipo_limpieza_elegido(self, boton):
@@ -979,6 +934,54 @@ class FichaTecnica(QWidget):
         fila_historico.addStretch()
         layout.addLayout(fila_historico)
         layout.addStretch()
+        
+        etiqueta_impresora = self._crear_etiqueta("Impresora:", "#4F7F84", 13)
+        layout.addWidget(etiqueta_impresora)
+
+        self.combo_impresora = QComboBox()
+        self.combo_impresora.setMinimumHeight(escalar(36))
+        self.combo_impresora.setStyleSheet(f"""
+            QComboBox {{
+                background-color: white;
+                border: 1px solid #D9E2E4;
+                border-radius: {escalar(4)}px;
+                padding: {escalar(4)}px {escalar(8)}px;
+                font-size: {escalar_fuente(13)}px;
+                color: #115E67;
+            }}
+        """)
+
+        nombres_impresoras = [impresora.printerName() for impresora in QPrinterInfo.availablePrinters()]
+        self.combo_impresora.addItems(nombres_impresoras)
+
+        impresora_por_defecto = QPrinterInfo.defaultPrinter().printerName()
+        if "Godex ZX420i GZPL" in nombres_impresoras:
+            self.combo_impresora.setCurrentText("Godex ZX420i GZPL")
+        elif impresora_por_defecto in nombres_impresoras:
+            self.combo_impresora.setCurrentText(impresora_por_defecto)
+
+        self.impresora_seleccionada = self.combo_impresora.currentText()
+        self.combo_impresora.currentTextChanged.connect(self._on_impresora_cambiada)
+
+        self.btn_ajustar_etiqueta = QPushButton("Ajustar etiqueta…")
+        self.btn_ajustar_etiqueta.setMinimumHeight(escalar(34))
+        self.btn_ajustar_etiqueta.setCursor(Qt.PointingHandCursor)
+        self.btn_ajustar_etiqueta.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #F0F4F4;
+                color: #115E67;
+                border: 1px solid #D9E2E4;
+                border-radius: {escalar(4)}px;
+                font-size: {escalar_fuente(13)}px;
+            }}
+            QPushButton:hover {{ background-color: #E3EEEE; }}
+        """)
+        self.btn_ajustar_etiqueta.clicked.connect(self._abrir_ajuste_etiqueta)
+
+        layout.addWidget(self.combo_impresora)
+        layout.addWidget(self.btn_ajustar_etiqueta)
+        layout.addStretch()
+        
         return marco
 
     def actualizar_vista_previa(self, datos: DatosEtiquetaFrescas) -> None:
@@ -1245,7 +1248,6 @@ class FichaTecnica(QWidget):
             fecha_sacrificio=historico.get("fcha_scrfcio"),
             nom_impr_etiq=self.nom_impr_etiq,
             numEspecie=self.numEspecie,
-            #fecha_vencimiento_str=( historico.get("fcha_vnce_ref") or historico.get("fcha_vnce_cong")),
             fecha_vencimiento_str=vence_ref or vence_cong,
             numero_ticket=historico.get("nmro_psta"),  # clave: reutiliza el consecutivo, no genera uno nuevo
         )
@@ -1263,8 +1265,6 @@ class FichaTecnica(QWidget):
             "fcha_prdccion": self.fecha_produccion,
             "fcha_vnce_ref": None if es_cong else self.fecha_vencimiento_str,
             "fcha_vnce_cong": self.fecha_vencimiento_str if es_cong else None,
-            #"fcha_vnce_ref": self.fecha_vencimiento_str,
-            #"fcha_vnce_cong": self.fecha_vencimiento_str,
             "fcha_scrfcio": self.fecha_sacrificio,
             "pso_nto": self.peso_neto_kg,
             "pso_tra": 0,
@@ -1289,13 +1289,25 @@ class FichaTecnica(QWidget):
     def _volver_a_seleccion_de_producto(self):
         self._limpiar_y_volver()
     
+    def _mostrar_puertos_com(self) -> str:
+        configurado = bascula_service.puerto_en_uso()
+        lineas = []
+
+        for device, descripcion in bascula_service.listar_puertos():
+            marca = " " if device == configurado else ""
+            lineas.append(f"{device}{marca}")
+
+        return ", ".join(lineas) or "ninguno"
+        
     def _on_peso_actualizado(self, nuevo_peso: float) -> None:
         cambio = nuevo_peso != self.peso_neto_kg
         if not hasattr(self, "_puerto_config_cache"):
             self._puerto_config_cache = bascula_service._obtener_puerto_configurado()
         self.peso_neto_kg = nuevo_peso
         self.etiqueta_peso.setText(f"{nuevo_peso:.3f}")
-        self.etiqueta_peso_neto.setText(f"Peso Neto: {nuevo_peso:.3f} kg "+ f"Puerto: {self._puerto_config_cache}")
+        self.etiqueta_peso_neto.setText(
+            #f"Peso Neto: {nuevo_peso:.3f} kg "+ 
+            f"Puerto Conf: {self._puerto_config_cache}"+f" Puertos Disp:{self._mostrar_puertos_com()}")
 
         if not cambio:
             return

@@ -197,7 +197,7 @@ class VentanaPrincipal(QWidget):
         subtitulo.setAlignment(Qt.AlignCenter)
 
         subtitulo.setStyleSheet(f"""
-            font-size: {escalar_fuente(14)}px;
+            font-size: {escalar_fuente(20)}px;
             color: #71898B;
             background: transparent;
             padding: 2px;
@@ -420,7 +420,7 @@ class VentanaPrincipal(QWidget):
         self._etiqueta_tipo_pieza = QLabel("Seleccione la parte del animal")
         self._etiqueta_tipo_pieza.setAlignment(Qt.AlignCenter)
         self._etiqueta_tipo_pieza.setStyleSheet(
-            f"font-size: {escalar_fuente(13)}px; color: #29494B; font-weight: 600;"
+            f"font-size: {escalar_fuente(20)}px; color: #29494B; font-weight: 600;"
         )
         layout_panel.addWidget(self._etiqueta_tipo_pieza)
 

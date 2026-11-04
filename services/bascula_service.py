@@ -3,7 +3,6 @@ import random
 import re
 import socket
 from typing import Callable, Optional
-import os
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 from repositories.configuracion_repository import obtener_puerto_com
 from models.database import obtener_conexion
@@ -376,6 +375,33 @@ class BasculaService(QObject):
     # ==================================================================
     # INICIAR
     # ==================================================================
+    def listar_puertos(self) -> list[tuple[str, str]]:
+        """
+        Devuelve los puertos COM que ve Windows, igual que el
+        Administrador de dispositivos: [("COM3", "USB Serial Port (COM3)"), ...]
+        """
+        if list_ports is None:
+            return []
+
+        puertos = [
+            (p.device, p.description)
+            for p in sorted(list_ports.comports(), key=lambda p: p.device)
+        ]
+
+        # Imprimir para depurar
+        print(f"[BASCULA] Puertos encontrados: {puertos}")
+
+        # O uno por línea, más fácil de leer:
+        for device, descripcion in puertos:
+            print(f"[BASCULA] {device} -> {descripcion}")
+
+        return puertos
+       
+
+    def puerto_en_uso(self) -> Optional[str]:
+        """Puerto con el que está trabajando el servicio ahora mismo."""
+        return self._puerto_actual
+
     def _obtener_puerto_configurado(self) -> str:
         """
         Obtiene el puerto configurado en BASICAS para este equipo,
@@ -427,6 +453,7 @@ class BasculaService(QObject):
             return
 
         puerto_bascula = self._obtener_puerto_configurado()
+        self._puerto_actual = puerto_bascula
 
         self._hilo = _HiloLecturaBascula(
             puerto=puerto_bascula,

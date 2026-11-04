@@ -692,10 +692,9 @@ class SeleccionDeProducto(QWidget):
     # ------------------------------------------------------------------
     # Filtro por PLU
     # ------------------------------------------------------------------
+
     def _aplicar_filtro_plu(self):
-        texto_crudo = self.campo_filtro_plu.text()
-        texto = texto_crudo.strip()
-        busqueda_exacta = texto_crudo.endswith(" ")
+        texto = self.campo_filtro_plu.text().strip()
 
         if not texto:
             self._layout_paginador_visible(True)
@@ -703,8 +702,10 @@ class SeleccionDeProducto(QWidget):
             return
 
         self._layout_paginador_visible(False)
+
         productos = self.repositorio.buscar_productos_por_plu(
-            *self._args_repositorio(), texto, exacto=busqueda_exacta
+            *self._args_repositorio(),
+            texto
         )
         self._mostrar_productos(productos)
 
