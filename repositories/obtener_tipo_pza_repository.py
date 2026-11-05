@@ -383,12 +383,7 @@ class ObtenerTipoPzaRepository:
         cdgo_espcie: int,
         tpo_pza: int,
         texto_plu: str,
-        exacto: bool = False,
     ) -> List[Producto]:
-
-        # Exacto: igualdad. Normal: contiene el texto.
-        operador = "=" if exacto else "LIKE"
-        valor_plu = texto_plu if exacto else f"%{texto_plu}%"
 
         consulta = f"""
             SELECT
@@ -399,20 +394,19 @@ class ObtenerTipoPzaRepository:
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
             LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
-                ON img.referencia =
-                CAST(p.cdgo_plu AS VARCHAR(50))
+                ON img.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
             WHERE a.tpo_pza = ?
-            AND p.cntro_prcso = 1
-            AND p.cdgo_espcie = ?
-            AND p.estdo = 0
-            AND img.nom_prog = 'productos'
-            AND CAST(p.cdgo_plu AS VARCHAR(50)) {operador} ?
-            AND EXISTS (
-                SELECT 1
-                FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli ft
-                WHERE (? IS NULL OR ? = 1 OR ft.cod_emprsa = ?)
-                    AND ft.cdgo_plu = p.cdgo_plu
-            )
+                AND p.cntro_prcso = 1
+                AND p.cdgo_espcie = ?
+                AND p.estdo = 0
+                AND img.nom_prog = 'productos'
+                AND CAST(p.cdgo_plu AS VARCHAR(50)) = ?
+                AND EXISTS (
+                    SELECT 1
+                    FROM [{DB_PRODUCTOS}].dbo.ficha_tec_prod_cli ft
+                    WHERE (? IS NULL OR ? = 1 OR ft.cod_emprsa = ?)
+                        AND ft.cdgo_plu = p.cdgo_plu
+                )
             ORDER BY p.nmbre_prdcto
         """
 
@@ -423,7 +417,7 @@ class ObtenerTipoPzaRepository:
                 (
                     tpo_pza,
                     cdgo_espcie,
-                    valor_plu,
+                    texto_plu.strip(),
                     cod_emprsa,
                     cod_emprsa,
                     cod_emprsa,

@@ -53,10 +53,7 @@ class LoginWorker(QThread):
 class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(
-            "MÓDULO DE PESAJE PRODUCTOS EN POSTAS Y A GRANEL DEL "
-            "CENTRO DE PROCESO CARNES FRESCAS - Login"
-        )
+
         self.setFixedSize(escalar(300), escalar(200))
 
         self.login_worker = None
