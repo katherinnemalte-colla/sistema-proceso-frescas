@@ -24,7 +24,7 @@ from utils import mensajes
 from utils.rutas import ruta_recurso
 from repositories.etiquetas.frescas_100x45 import (siguiente_consecutivo_etiqueta_canasta)
 from utils.tiempos import medir
-from collections import namedtuple
+from utils.teclado_numerico import TecladoNumerico
 
 CriterioFiltroRes = namedtuple(
     "CriterioFiltroRes",
@@ -486,11 +486,22 @@ class SeleccionDeProducto(QWidget):
             """
         )
 
+        # Teclado táctil
+        self.teclado_plu = TecladoNumerico(self)
+        self.teclado_plu.vincular(self.campo_filtro_plu)
+
+        # Búsqueda automática existente
         self._temporizador_filtro = QTimer(self)
         self._temporizador_filtro.setSingleShot(True)
         self._temporizador_filtro.setInterval(350)
-        self._temporizador_filtro.timeout.connect(self._aplicar_filtro_plu)
-        self.campo_filtro_plu.textChanged.connect(lambda _texto: self._temporizador_filtro.start())
+
+        self._temporizador_filtro.timeout.connect(
+            self._aplicar_filtro_plu
+        )
+
+        self.campo_filtro_plu.textChanged.connect(
+            lambda _texto: self._temporizador_filtro.start()
+        )
 
         layout.addWidget(circulo_buscar)
         layout.addWidget(etiqueta)
