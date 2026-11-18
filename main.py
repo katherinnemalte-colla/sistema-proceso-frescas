@@ -1,6 +1,5 @@
 import logging
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,6 +20,7 @@ import threading
 import time
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
+from build import VERSION
 
 EXE_RED = r"\\200.150.50.134\publico\Analista\etiquetasMk\etiquetas_v2.exe"
 RUTA_ICONOS = ruta_recurso(os.path.join("assets", "icons"))
@@ -64,7 +64,7 @@ class ControladorApp:
 
         self.ventana_app = VentanaApp(usuario, obtener_conexion)
         self.ventana_app.setWindowTitle(
-            f"Etiquetas 2 en 1  Usuario: {usuario.nombre_usuario}  Entorno : {DB_SERVER}" +""
+            f"Etiquetas 2 en 1  Usuario: {usuario.nombre_usuario}  Entorno : {DB_SERVER} v:  {VERSION}"
         )
         self.ventana_app.show()
         QTimer.singleShot(0, self.ventana_app.showMaximized)

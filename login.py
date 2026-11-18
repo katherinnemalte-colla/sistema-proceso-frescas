@@ -1,5 +1,6 @@
 import sys
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QEvent, QProcess
+import os
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QMessageBox, QProgressDialog
@@ -8,7 +9,7 @@ import pyodbc  # para capturar sus excepciones específicas también
 import traceback
 from services.auth_service import authService
 from utils.ventana_utils import aplicar_tamano, escalar, escalar_fuente,establecer_factor_temporal, limpiar_factor_temporal, factor_para_contenido,_icono_pixmap
-
+from PySide6.QtCore import QProcess
 
 class LoginWorker(QThread):
     exito = Signal(str)
@@ -26,7 +27,7 @@ class LoginWorker(QThread):
             if usuario_db:
                 self.exito.emit(usuario_db.nombre)
             else:
-                self.error.emit("Usuario o contraseña incorrectos.")
+                self.error.emit("Usuario o contraseña incorrectosss.")
 
         except ConnectionError:
             self.error.emit(
@@ -67,6 +68,9 @@ class LoginWindow(QWidget):
         self.input_pass = QLineEdit()
         self.input_pass.setEchoMode(QLineEdit.Password)
 
+        self.input_user.installEventFilter(self)
+        self.input_pass.installEventFilter(self)
+        
         self.btn_login = QPushButton("Ingresar")
         self.btn_login.clicked.connect(self.verificar_login)
 
@@ -81,7 +85,15 @@ class LoginWindow(QWidget):
 
         # Permite iniciar sesión con Enter
         self.input_pass.returnPressed.connect(self.verificar_login)
+    def eventFilter(self, obj, event):
 
+        if obj in (self.input_user, self.input_pass):
+
+            if event.type() == QEvent.FocusIn:
+                self.abrir_teclado_windows()
+
+        return super().eventFilter(obj, event)
+    
     def verificar_login(self):
         usuario = self.input_user.text().strip()
         contrasena = self.input_pass.text()
@@ -120,6 +132,32 @@ class LoginWindow(QWidget):
     def _finalizar_intento(self):
         """Se ejecuta siempre al terminar el hilo, haya éxito o error."""
         self.btn_login.setEnabled(True)
+    
+    def abrir_teclado_windows(self):
+        """Abre el teclado en pantalla de Windows."""
+
+        ruta_teclado = os.path.join(
+            os.environ.get("WINDIR", r"C:\Windows"),
+            "System32",
+            "osk.exe"
+        )
+
+        if not os.path.exists(ruta_teclado):
+            print(f"No se encontró el teclado: {ruta_teclado}")
+            return
+
+        resultado = QProcess.startDetached(ruta_teclado)
+
+        # En PySide6 puede retornar una tupla (éxito, PID)
+        if isinstance(resultado, tuple):
+            iniciado = resultado[0]
+        else:
+            iniciado = resultado
+
+        if iniciado:
+            print("Teclado de Windows iniciado correctamente.")
+        else:
+            print("Windows no permitió iniciar el teclado.")
 
 
 if __name__ == "__main__":

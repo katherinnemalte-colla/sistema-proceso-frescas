@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 DB_PRODUCTOS = DB_DATABASE
 GRUPO_PERFIL = "PERFIL_IMPRESORA"
-DESCRIPCION_PERFIL = "Perfil de impresora (ajuste de etiqueta)"
+DESCRIPCION_PERFIL = "Perfil de impresora (ajuste de etiqueta etiquetas_v2)"
 
 # ----------------------------------------------------------------------
 # Geometría fija de la etiqueta

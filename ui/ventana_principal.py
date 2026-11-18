@@ -28,6 +28,7 @@ from utils.mensajes import MensajeVentanaFlujo
 from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QIntValidator
+from utils.teclado_numerico import TecladoNumerico
 RUTA_ICONOS = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "assets",
@@ -274,12 +275,14 @@ class VentanaPrincipal(QWidget):
 
 
         etiqueta_empresa = QLabel("Empresa")
+        self.teclado_plu = TecladoNumerico(self)
         etiqueta_empresa.setStyleSheet(f"font-size: {escalar_fuente(13)}px; color: #29494B;")
 
         self.campo_empresa = QLineEdit()
+        
         self.campo_empresa.setPlaceholderText("Ingrese el número de empresa")
         self.campo_empresa.setValidator(QIntValidator(0, 999999999, self))
-
+        self.teclado_plu.vincular(self.campo_empresa)
         contenedor_empresa = self._envolver_campo(
             self.campo_empresa,
             "empresa.png"

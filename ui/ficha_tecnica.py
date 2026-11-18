@@ -612,7 +612,7 @@ class FichaTecnica(QWidget):
 
         # Dimensiones de la matriz (3 filas x 4 columnas, botones cuadrados)
         self._filas_limpieza = 2
-        self._columnas_limpieza = 8
+        self._columnas_limpieza = 9
         self._lado_boton_limpieza = escalar(80)
 
         self._contenedor_botones_limpieza = QGridLayout()
