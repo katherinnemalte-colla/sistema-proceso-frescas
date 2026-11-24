@@ -141,7 +141,8 @@ ETIQUETA_VENCIMIENTO = {
     "refrigerado": "F.Vto.Refrigeracion:",
     "congelado": "F.Vto.Congelacion:",
 }
-
+ICONO_CONGELACION_SIZE = 60
+SEPARACION_ICONO_LINEA = 24
 _consecutivo_repository = ConsecutivoRepository()
 
 
@@ -240,6 +241,8 @@ def _cargar_pixmap(nombre_archivo: str) -> Optional[QPixmap]:
 def crear_etiqueta_marca() -> Optional[QPixmap]:
     return _cargar_pixmap("logo_marca.png")
 
+def crear_congelacion_img() -> Optional[QPixmap]:
+    return _cargar_pixmap("congelacion.png")
 
 def _formatear_fecha(valor: Optional[date], formato: str = "%d/%m/%Y") -> str:
     """Fecha como texto; cadena vacía si no hay fecha."""
@@ -340,6 +343,7 @@ class DatosEtiquetaFrescas:
 
     # Marca / categoría
     marca: Optional[QPixmap]
+    icono_congelacion: Optional[QPixmap]
     categoria: str
     codigo: str
 
@@ -348,7 +352,7 @@ class DatosEtiquetaFrescas:
     qr_derecha: Optional[str]
 
     # Tipo de conservación del vencimiento: "refrigerado" | "congelado"
-    tipo_conservacion: str = "refrigerado"
+    tipo_conservacion: str
 
 
 def construir_datos_etiqueta(
@@ -364,7 +368,7 @@ def construir_datos_etiqueta(
     fecha_sacrificio: Optional[date] = None,
     nom_impr_etiq: Optional[str] = None,
     numEspecie: Optional[int] = None,
-    tipo_conservacion: str = "refrigerado",      # NUEVO
+    tipo_conservacion: Optional[str]= None,
 ) -> DatosEtiquetaFrescas:
 
     fecha_produccion = fechas._asegurar_date(fecha_produccion)
@@ -375,6 +379,7 @@ def construir_datos_etiqueta(
     if tipo_conservacion not in ETIQUETA_VENCIMIENTO:
         tipo_conservacion = "refrigerado"
 
+    es_congelado = ETIQUETA_VENCIMIENTO[tipo_conservacion].startswith("F.Vto.Congelacion")
     # El peso se obtiene UNA sola vez para que el QR y el texto de la
     # etiqueta muestren exactamente el mismo valor.
     peso_neto_kg = (
@@ -424,6 +429,7 @@ def construir_datos_etiqueta(
         recomendacion_uso=RECOMENDACION_USO,
 
         marca=crear_etiqueta_marca(),
+        icono_congelacion= crear_congelacion_img() if es_congelado else None,
         categoria=categoria,
         codigo=construir_codigo(f"E{cod_empresa}", nombre_usuario, numero_ticket),
         qr_izquierda=contenido_qr,
@@ -763,6 +769,16 @@ def _dibujar_contenido_etiqueta(
         int(x_full), int(y), int(x_full + ancho_full), int(y)
     )
     painter.setPen(Qt.GlobalColor.black)
+    icono = datos.icono_congelacion
+    if icono is not None and not icono.isNull():
+        tam_icono = ICONO_CONGELACION_SIZE * esc
+        dibujar_logo_centrado(
+            icono,
+            x_full + ancho_full - tam_icono,        # pegado al margen derecho
+            y - tam_icono - SEPARACION_ICONO_LINEA * esc,  # justo sobre la línea
+            tam_icono,
+            tam_icono,
+        )
 
     # ---------------- Bloque inferior: logo + categoría + código ----------------
     # Ocupa la franja entre los dos QR: empieza en la línea divisoria y

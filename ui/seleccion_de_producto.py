@@ -46,6 +46,11 @@ COLOR_BORDE = "#dfe6e6"
 COLOR_TEXTO_SECUNDARIO = "#8a97a0"
 COLOR_FONDO = "#eef3f3"
 RUTA_ICONOS = ruta_recurso(os.path.join("assets", "icons", "icons"))
+# Tipo de pieza: (texto, fondo, color del texto)
+TIPOS_PIEZA = {
+    1: ("Delantero", "#e6f2f2", "#1a6b6b"),
+    2: ("Trasero", "#fff1dc", "#a85d00"),
+}
 
 def _ruta_icono(nombre_archivo):
     return os.path.join(RUTA_ICONOS, nombre_archivo)
@@ -102,9 +107,10 @@ class ProductoWidget(QFrame):
 
     clicked = Signal(object)  # emite el Producto
 
-    def __init__(self, producto, parent=None):
+    def __init__(self, producto, parent=None, mostrar_tipo=False):
         super().__init__(parent)
         self.producto = producto
+        self._insignia_tipo = None
         self.setCursor(Qt.PointingHandCursor)
         self.setObjectName("tarjetaProducto")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -126,7 +132,6 @@ class ProductoWidget(QFrame):
         layout.setContentsMargins(escalar(0), escalar(0), escalar(0), escalar(0))
         layout.setSpacing(escalar(0))
 
-
         # --- Imagen, con aire alrededor y esquinas redondeadas propias ---
         contenedor_imagen = QFrame()
         contenedor_imagen.setObjectName("contenedorImagen")
@@ -139,7 +144,6 @@ class ProductoWidget(QFrame):
 
         etiqueta_imagen = ImagenEscalable()
         etiqueta_imagen.setMinimumHeight(120)
-        #etiqueta_imagen.setMaximumHeight(220)
         etiqueta_imagen.setStyleSheet("background: transparent; border-radius: 8px;")
 
         pixmap = self._cargar_pixmap(producto.imagen_principal)
@@ -186,6 +190,54 @@ class ProductoWidget(QFrame):
         layout.addWidget(contenedor_imagen, stretch=1)
         layout.addLayout(bloque_texto)
         layout.addWidget(franja_acento)
+
+        # --- Insignia de tipo de pieza (solo en resultados del filtro por PLU) ---
+        if mostrar_tipo:
+            self._crear_insignia_tipo(getattr(producto, "tipo", None))
+
+    # ------------------------------------------------------------------
+    # Insignia de tipo de pieza (1 = Delantero, 2 = Trasero)
+    # ------------------------------------------------------------------
+    def _crear_insignia_tipo(self, tipo):
+        if tipo is None:
+            return
+        try:
+            datos = TIPOS_PIEZA.get(int(tipo))
+        except (TypeError, ValueError):
+            return
+        if datos is None:
+            return
+
+        texto, fondo, color = datos
+
+        insignia = QLabel(texto, self)  # hija de la tarjeta, fuera del layout
+        insignia.setAlignment(Qt.AlignCenter)
+        insignia.setAttribute(Qt.WA_TransparentForMouseEvents)
+        insignia.setStyleSheet(
+            f"background: {fondo}; color: {color}; border-radius: {escalar(8)}px; "
+            f"padding: {escalar(2)}px {escalar(10)}px; "
+            f"font-size: {escalar_fuente(11)}px; font-weight: 700;"
+        )
+        insignia.adjustSize()
+        self._insignia_tipo = insignia
+        self._posicionar_insignia()
+
+    def _posicionar_insignia(self):
+        insignia = self._insignia_tipo
+        if insignia is None:
+            return
+        margen = escalar(8)
+        insignia.adjustSize()
+        insignia.move(
+            self.width() - insignia.width() - margen,
+            self.height() - insignia.height() - escalar(4) - margen,  # 4 = franja de acento
+        )
+        insignia.raise_()
+        insignia.show()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._posicionar_insignia()
 
     @staticmethod
     def _cargar_pixmap(datos_binarios):
@@ -714,11 +766,13 @@ class SeleccionDeProducto(QWidget):
 
         self._layout_paginador_visible(False)
 
+        criterio = self._obtener_criterio_filtro()
         productos = self.repositorio.buscar_productos_por_plu(
-            *self._args_repositorio(),
-            texto
+            criterio.cod_emprsa,
+            criterio.cdgo_espcie,
+            texto,
         )
-        self._mostrar_productos(productos)
+        self._mostrar_productos(productos, mostrar_tipo=True)
 
     def _layout_paginador_visible(self, visible):
         for boton in (self.boton_primero, self.boton_anterior, self.boton_siguiente, self.boton_ultimo):
@@ -731,7 +785,7 @@ class SeleccionDeProducto(QWidget):
     # ------------------------------------------------------------------
     # Grilla de productos
     # ------------------------------------------------------------------
-    def _mostrar_productos(self, productos):
+    def _mostrar_productos(self, productos,mostrar_tipo=False):
      with medir("mosrtrar ficha tecnica"):
         while self._layout_grilla.count():
             item = self._layout_grilla.takeAt(0)
@@ -745,7 +799,7 @@ class SeleccionDeProducto(QWidget):
     
         for indice, producto in enumerate(productos):
             fila, columna = divmod(indice, COLUMNAS_GRILLA)
-            tarjeta = ProductoWidget(producto)
+            tarjeta = ProductoWidget(producto, mostrar_tipo=mostrar_tipo)
             
             tarjeta.clicked.connect(self._abrir_ficha_tecnica)
             self._layout_grilla.addWidget(tarjeta, fila, columna)

@@ -23,6 +23,7 @@ class Producto:
     cdgo_plu: str
     nom_prog: str
     imagen_principal: Optional[bytes]
+    tipo: Optional[int] = None
     letra: str = ""   # <-- nuevo campo, con default para no romper otros métodos que ya crean Producto
     
 @dataclass
@@ -381,7 +382,7 @@ class ObtenerTipoPzaRepository:
         self,
         cod_emprsa: int,
         cdgo_espcie: int,
-        tpo_pza: int,
+        #tpo_pza: int,
         texto_plu: str,
     ) -> List[Producto]:
 
@@ -389,17 +390,17 @@ class ObtenerTipoPzaRepository:
             SELECT
                 p.cdgo_plu,
                 p.nmbre_prdcto AS nom_prog,
-                img.con_arch_2 AS con_arch
+                img.con_arch_2 AS con_arch,
+                a.tpo_pza AS tipo
             FROM [{DB_PRODUCTOS}].dbo.tpo_pzas_espcies a
             INNER JOIN [{DB_PRODUCTOS}].dbo.prdctos p
                 ON p.tpo_pza = a.tpo_pza
             LEFT JOIN [{DB_IMAGENES}].dbo.imagenes img
                 ON img.referencia = CAST(p.cdgo_plu AS VARCHAR(50))
-            WHERE a.tpo_pza = ?
-                AND p.cntro_prcso = 1
+                AND img.nom_prog = 'productos'
+            WHERE p.cntro_prcso = 1
                 AND p.cdgo_espcie = ?
                 AND p.estdo = 0
-                AND img.nom_prog = 'productos'
                 AND CAST(p.cdgo_plu AS VARCHAR(50)) = ?
                 AND EXISTS (
                     SELECT 1
@@ -415,7 +416,7 @@ class ObtenerTipoPzaRepository:
             cursor.execute(
                 consulta,
                 (
-                    tpo_pza,
+                    #tpo_pza,
                     cdgo_espcie,
                     texto_plu.strip(),
                     cod_emprsa,
@@ -428,6 +429,7 @@ class ObtenerTipoPzaRepository:
                     cdgo_plu=fila[0],
                     nom_prog=fila[1],
                     imagen_principal=fila[2],
+                    tipo=fila[3]
                 )
                 for fila in cursor.fetchall()
             ]

@@ -16,6 +16,9 @@ DB_PRODUCTOS = DB_DATABASE
 
 EMPRESA_POR_DEFECTO = 1
 
+TIPOS_LIMPIEZA_PERMITIDOS = (
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 18, 20, 23, 24, 27, 30, 33, 34,
+)
 
 def normalizar_empresa(codigo_empresa) -> int:
     """
@@ -67,15 +70,18 @@ class ObtenerTipoLimpiezaRepository:
         self._obtener_conexion = obtener_conexion
 
     def obtener_tipos_limpieza(self) -> List[TipoLimpieza]:
+        marcadores = ",".join("?" * len(TIPOS_LIMPIEZA_PERMITIDOS))
         consulta = f"""
             SELECT tpo_lmpza, nmbre, prfjo, ctgria_ascda, estdo
             FROM [{DB_PRODUCTOS}].dbo.tpo_lmpza
-            WHERE estdo = 1 ORDER BY tpo_lmpza
+            WHERE estdo = 1
+            AND tpo_lmpza IN ({marcadores})
+            ORDER BY tpo_lmpza
         """
 
         with self._obtener_conexion() as conexion:
             cursor = conexion.cursor()
-            cursor.execute(consulta)
+            cursor.execute(consulta, TIPOS_LIMPIEZA_PERMITIDOS)
             return [
                 TipoLimpieza(
                     tpo_lmpza=fila[0],
