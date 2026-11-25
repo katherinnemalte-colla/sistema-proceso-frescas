@@ -1234,8 +1234,17 @@ class FichaTecnica(QWidget):
             cdgo_plu=historico.get("cdgo_plu"),
             nom_prog=historico.get("nmbre_plu", ""),
         )
-        vence_ref = historico.get("fcha_vnce_ref")
-        vence_cong = historico.get("fcha_vnce_cong")
+
+        def _valida(f):
+            f = fechas._asegurar_date(f)
+            return None if f is None or f.year <= 1900 else f
+
+        vence_ref = _valida(historico.get("fcha_vnce_ref"))
+        vence_cong = _valida(historico.get("fcha_vnce_cong"))
+
+        es_congelado = vence_cong is not None and vence_ref is None
+        tipo_conservacion = "congelado" if es_congelado else "refrigerado"
+        fecha_vencimiento = vence_cong if es_congelado else vence_ref
 
         return dict(
             producto=producto_para_etiqueta,
@@ -1248,8 +1257,9 @@ class FichaTecnica(QWidget):
             fecha_sacrificio=historico.get("fcha_scrfcio"),
             nom_impr_etiq=self.nom_impr_etiq,
             numEspecie=self.numEspecie,
-            fecha_vencimiento_str=vence_ref or vence_cong,
-            numero_ticket=historico.get("nmro_psta"),  # clave: reutiliza el consecutivo, no genera uno nuevo
+            fecha_vencimiento_str=fecha_vencimiento,
+            tipo_conservacion=tipo_conservacion,
+            numero_ticket=historico.get("nmro_psta"),  # reutiliza el consecutivo, no genera uno nuevo
         )
     def _construir_datos_historico_actualizado(self) -> dict:
         # Como los campos de _crear_info_producto no son editables,

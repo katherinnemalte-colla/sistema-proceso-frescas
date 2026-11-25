@@ -5,6 +5,8 @@ def registrar_historico_pesaje(parametros_etiqueta: dict, oprdor: str = "", nmro
     producto = parametros_etiqueta.get("producto")
     cdgo_plu = getattr(producto, "cdgo_plu", 0) if producto else 0
     nmbre_plu = getattr(producto, "nom_prog", "") if producto else ""
+    es_cong = parametros_etiqueta.get("tipo_conservacion") == "congelado"
+    fecha_vto = parametros_etiqueta.get("fecha_vencimiento_str")
 
     datos = {
         
@@ -12,7 +14,8 @@ def registrar_historico_pesaje(parametros_etiqueta: dict, oprdor: str = "", nmro
         "nmbre_plu": nmbre_plu,
         "nmro_lte": parametros_etiqueta.get("lote", 0),
         "fcha_prdccion": parametros_etiqueta.get("fecha_produccion", "1900-01-01"),
-        "fcha_vnce_ref": parametros_etiqueta.get("fecha_vencimiento_str", "1900-01-01"),
+        "fcha_vnce_ref": None if es_cong else fecha_vto,
+        "fcha_vnce_cong": fecha_vto if es_cong else None,
         "fcha_scrfcio": parametros_etiqueta.get("fecha_sacrificio", "1900-01-01"),
         "pso_nto": parametros_etiqueta.get("peso_bascula", 0),
         "cdgo_emprsa": parametros_etiqueta.get("cod_empresa", 0),

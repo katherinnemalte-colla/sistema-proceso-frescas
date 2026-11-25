@@ -396,9 +396,9 @@ class SeleccionDeProducto(QWidget):
         contenedor = QWidget()
         contenedor.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(contenedor)
-        layout.setContentsMargins(escalar(24), escalar(16),escalar(24), escalar(8))
+        layout.setContentsMargins(escalar(24), escalar(16), escalar(24), escalar(8))
         layout.setSpacing(escalar(16))
-
+               
 
         layout.addWidget(
             self._crear_tarjeta("LOTE", self._obtener_valor_lote(), "box.png")
@@ -406,17 +406,30 @@ class SeleccionDeProducto(QWidget):
         layout.addWidget(
             self._crear_tarjeta("FECHA DE PRODUCCIÓN", self.fecha_produccion, "calendar.png")
         )
+
+        # ESPECIE y pieza en una sola tarjeta: "RES/TRASERO"
+        valor_especie = str(self.especie)
+        nombre_pieza = self._obtener_nombre_pieza()
+        if nombre_pieza:
+            valor_especie = f"{valor_especie}/{nombre_pieza.upper()}"
+
         layout.addWidget(
-            self._crear_tarjeta("ESPECIE", str(self.especie), "cow.png")
+            self._crear_tarjeta("ESPECIE", valor_especie, "cow.png")
         )
 
-        # Solo aparece en el flujo RES, cuando sí hay tipo de pieza.
-        if self.tpo_pza is not None and self.nombre_tipo_pieza:
-            layout.addWidget(
-                self._crear_tarjeta("TIPO DE PIEZA", str(self.nombre_tipo_pieza), "box.png")
-            )
-
         return contenedor
+
+    def _obtener_nombre_pieza(self):
+        """Nombre de la pieza elegida; si no llegó el nombre, lo deduce de tpo_pza."""
+        if self.tpo_pza is None:
+            return ""
+        if self.nombre_tipo_pieza:
+            return str(self.nombre_tipo_pieza)
+        try:
+            datos = TIPOS_PIEZA.get(int(self.tpo_pza))
+        except (TypeError, ValueError):
+            return ""
+        return datos[0] if datos else ""
 
     def _obtener_valor_lote(self):
         """
